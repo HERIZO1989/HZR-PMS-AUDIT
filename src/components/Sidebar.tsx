@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 
 const ITEMS = [
   { href: '/dashboard', label: 'Tableau de bord' },
-  { href: '/reservations', label: 'Réservations' },
+  { href: '/reservations', label: 'Reservations' },
   { href: '/guests', label: 'Clients' },
   { href: '/housekeeping', label: 'Housekeeping' },
   { href: '/night-audit', label: 'Night Audit' },
@@ -17,22 +17,26 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-60 shrink-0 border-r border-ink-700 bg-ink-900 px-6 py-8">
-      <div className="mb-10">
-        <div className="font-display text-xl text-parchment">Riviera</div>
-        <div className="text-xs text-ink-400 tracking-normal">Suite PMS</div>
+    <div className="bg-headerbar">
+      <div className="flex items-center justify-between px-6 py-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center bg-brass text-sm font-bold text-white">R</div>
+          <div>
+            <div className="text-sm font-semibold leading-none text-white">Riviera Suite PMS</div>
+          </div>
+        </div>
       </div>
-      <nav className="flex flex-col gap-1">
+      <nav className="flex gap-0.5 border-t border-white/10 px-4">
         {ITEMS.map((item) => {
           const active = pathname?.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`border-l-2 px-3 py-2 text-sm transition-colors ${
+              className={`border-b-2 px-4 py-2.5 text-sm transition-colors ${
                 active
-                  ? 'border-brass text-parchment'
-                  : 'border-transparent text-ink-400 hover:text-parchment'
+                  ? 'border-brass-light bg-white text-headerbar font-medium'
+                  : 'border-transparent text-white/75 hover:bg-white/10 hover:text-white'
               }`}
             >
               {item.label}
@@ -40,6 +44,6 @@ export function Sidebar() {
           );
         })}
       </nav>
-    </aside>
+    </div>
   );
 }

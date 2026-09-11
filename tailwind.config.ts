@@ -6,24 +6,25 @@ const config: Config = {
     extend: {
       colors: {
         ink: {
-          900: '#14171B',
-          800: '#1C2027',
-          700: '#262B34',
-          600: '#343B47',
-          400: '#6B7280',
+          900: '#FFFFFF',
+          800: '#F5F7F9',
+          700: '#E2E8EE',
+          600: '#C7D0D9',
+          400: '#5B6B79',
         },
-        parchment: '#EDE7D9',
+        parchment: '#152430',
         brass: {
-          DEFAULT: '#B08D57',
-          light: '#CBA97A',
-          dim: '#8A6F44',
+          DEFAULT: '#0E6FA0',
+          light: '#2E97C4',
+          dim: '#0B5580',
         },
-        wine: '#7A3030',
-        ochre: '#A6772E',
-        moss: '#5C7A5C',
+        wine: '#C0392B',
+        ochre: '#B7791F',
+        moss: '#2F7D4F',
+        headerbar: '#0B3C5D',
       },
       fontFamily: {
-        display: ['var(--font-fraunces)', 'serif'],
+        display: ['var(--font-plex)', 'sans-serif'],
         sans: ['var(--font-plex)', 'sans-serif'],
       },
       borderRadius: {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { formatCurrency, formatPercent } from '@/lib/formatters';
 import { severityBorder, SeverityBadge } from '@/components/Badges';
+import { KpiTrendChart } from '@/components/KpiTrendChart';
 
 interface KpiResponse {
   averages: { occupancy_rate: number; adr: number; revpar: number };
@@ -48,7 +49,7 @@ export function DashboardClient({ hotelId }: { hotelId: string }) {
   if (loading) return <div className="text-ink-400">Chargement du registre…</div>;
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
       <header className="mb-10">
         <h1 className="font-display text-3xl text-parchment">Tableau de bord</h1>
         <p className="mt-1 text-sm text-ink-400">30 derniers jours clos — Grand Hotel Riviera Cannes</p>
@@ -59,6 +60,30 @@ export function DashboardClient({ hotelId }: { hotelId: string }) {
         <Stat label="Occupation" value={formatPercent(kpis?.averages.occupancy_rate ?? 0)} />
         <Stat label="ADR" value={formatCurrency(kpis?.averages.adr ?? 0)} />
         <Stat label="RevPAR" value={formatCurrency(kpis?.averages.revpar ?? 0)} />
+      </section>
+
+      <section className="mb-12 grid grid-cols-2 gap-8">
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-display text-lg text-parchment">Occupation</h2>
+            <span className="text-xs text-ink-400">30 jours</span>
+          </div>
+          <KpiTrendChart series={kpis?.series ?? []} metric="occupancy" />
+        </div>
+        <div>
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <h2 className="font-display text-lg text-parchment">ADR &amp; RevPAR</h2>
+            <span className="flex items-center gap-3 text-xs">
+              <span className="flex items-center gap-1.5 text-moss">
+                <span className="inline-block h-0.5 w-3 bg-moss" /> ADR
+              </span>
+              <span className="flex items-center gap-1.5 text-wine">
+                <span className="inline-block h-0.5 w-3 bg-wine" /> RevPAR
+              </span>
+            </span>
+          </div>
+          <KpiTrendChart series={kpis?.series ?? []} metric="money" />
+        </div>
       </section>
 
       <section>

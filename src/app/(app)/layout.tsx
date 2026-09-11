@@ -8,15 +8,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect('/login');
 
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen bg-ink-800">
       <Sidebar />
-      <div className="flex-1">
-        <header className="flex items-center justify-end gap-4 border-b border-ink-700 px-10 py-3 text-sm">
-          <span className="text-ink-400">{session.displayName}</span>
-          <LogoutButton />
-        </header>
-        <main className="px-10 py-8">{children}</main>
-      </div>
+      <header className="flex items-center justify-end gap-4 border-b border-ink-700 bg-white px-8 py-2 text-sm">
+        <span className="text-ink-400">{session.displayName}</span>
+        <LogoutButton />
+      </header>
+      <main className="px-8 py-6">{children}</main>
     </div>
   );
 }
