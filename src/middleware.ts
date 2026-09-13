@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { SESSION_COOKIE, verifySessionToken } from '@/lib/session';
+import { SESSION_COOKIE, verifySessionToken, isSessionRevoked } from '@/lib/session';
 
 const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/billing/webhook'];
 
@@ -20,6 +20,20 @@ export async function middleware(req: NextRequest) {
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // BUG-06 - une session revoquee (logout explicite ou desactivation de compte) est
+  // rejetee immediatement, meme si le JWT lui-meme n'est pas encore expire.
+  const revoked = await isSessionRevoked(session.jti, session.staffUserId, session.iat);
+  if (revoked) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Session révoquée, veuillez vous reconnecter' }, { status: 401 });
+    }
+    const loginUrl = new URL('/login', req.url);
+    loginUrl.searchParams.set('next', pathname);
+    const res = NextResponse.redirect(loginUrl);
+    res.cookies.set(SESSION_COOKIE, '', { path: '/', maxAge: 0 });
+    return res;
   }
 
   return NextResponse.next();
