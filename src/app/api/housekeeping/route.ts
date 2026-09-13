@@ -26,6 +26,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ tasks: data });
 }
 
+/**
+ * BUG-08 - Utilise desormais advance_housekeeping_task (fonction SQL transactionnelle)
+ * qui synchronise rooms.status quand une tache de nettoyage/turnover passe a 'verified',
+ * au lieu de ne mettre a jour que la table housekeeping_tasks.
+ */
 export async function PATCH(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!hasPermission(session, 'housekeeping.manage')) {
@@ -36,16 +41,13 @@ export async function PATCH(req: NextRequest) {
   if (!id || !status) return NextResponse.json({ error: 'id et status requis' }, { status: 400 });
 
   const supabase = getSupabaseAdmin();
-  const { data: task } = await supabase.from('housekeeping_tasks').select('hotel_id').eq('id', id).single();
-  if (!task || task.hotel_id !== session!.hotelId) {
-    return NextResponse.json({ error: 'Tache introuvable pour cet hotel' }, { status: 404 });
-  }
+  const { data, error } = await supabase.rpc('advance_housekeeping_task', {
+    p_task_id: id,
+    p_hotel_id: session!.hotelId,
+    p_new_status: status,
+    p_staff_user_id: session!.staffUserId,
+  });
 
-  const patch: Record<string, unknown> = { status };
-  if (status === 'in_progress') patch.started_at = new Date().toISOString();
-  if (status === 'completed' || status === 'verified') patch.completed_at = new Date().toISOString();
-
-  const { error } = await supabase.from('housekeeping_tasks').update(patch).eq('id', id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 422 });
+  return NextResponse.json({ task: data });
 }
