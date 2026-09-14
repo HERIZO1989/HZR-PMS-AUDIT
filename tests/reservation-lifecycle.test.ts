@@ -38,6 +38,11 @@ beforeAll(async () => {
   tenantId = data[0].out_tenant_id;
   hotelId = data[0].out_hotel_id;
 
+  // Le generateur marque aleatoirement 2 chambres 'out_of_order' ; sur un petit hotel
+  // de test cela peut vider un type de chambre entier. On force un etat deterministe
+  // pour que le test ne depende jamais de ce tirage aleatoire.
+  await supabase.from('rooms').update({ status: 'vacant_clean' }).eq('hotel_id', hotelId);
+
   const { data: rooms } = await supabase
     .from('rooms')
     .select('id, room_type_id, status')
