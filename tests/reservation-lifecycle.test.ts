@@ -38,6 +38,11 @@ beforeAll(async () => {
   tenantId = data[0].out_tenant_id;
   hotelId = data[0].out_hotel_id;
 
+  // Le generateur marque aleatoirement 2 chambres 'out_of_order' ; sur un petit hotel
+  // de test cela peut vider un type de chambre entier. On force un etat deterministe
+  // pour que le test ne depende jamais de ce tirage aleatoire.
+  await supabase.from('rooms').update({ status: 'vacant_clean' }).eq('hotel_id', hotelId);
+
   const { data: rooms } = await supabase
     .from('rooms')
     .select('id, room_type_id, status')
@@ -287,5 +292,140 @@ describe('Folio et paiement', () => {
       p_amount: 0, p_method: 'card', p_idempotency_key: 'vitest-key-zero',
     });
     expect(error).not.toBeNull();
+  });
+
+  it('rejette un ajout de ligne/paiement sur un hotel_id different (IDOR)', async () => {
+    const fake = '00000000-0000-0000-0000-000000000000';
+    const { error: e1 } = await supabase.rpc('add_folio_line', {
+      p_folio_id: folioId, p_hotel_id: fake, p_line_type: 'service', p_description: 'x', p_amount: 1,
+    });
+    expect(e1).not.toBeNull();
+    const { error: e2 } = await supabase.rpc('add_payment', {
+      p_folio_id: folioId, p_hotel_id: fake, p_amount: 1, p_method: 'cash', p_idempotency_key: 'vitest-idor',
+    });
+    expect(e2).not.toBeNull();
+  });
+});
+
+describe('TASK 2 — Authentification (rate limiting, traçabilité, révocation)', () => {
+  const testEmail = `vitest-auth-${Date.now()}@example.com`;
+
+  it("verrouille apres 5 echecs meme si le 6e essai utilise le bon mot de passe", async () => {
+    for (let i = 0; i < 5; i++) {
+      await supabase.rpc('attempt_staff_login', {
+        p_email: testEmail, p_password: 'wrong', p_ip_address: '198.51.100.10', p_user_agent: 'vitest',
+      });
+    }
+    const { data } = await supabase.rpc('attempt_staff_login', {
+      p_email: testEmail, p_password: 'wrong-again', p_ip_address: '198.51.100.10', p_user_agent: 'vitest',
+    });
+    expect(data[0].locked).toBe(true);
+  });
+
+  it('trace chaque tentative dans security_events', async () => {
+    const { count } = await supabase
+      .from('security_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_type', 'auth.login')
+      .contains('metadata', { email: testEmail });
+    expect(count).toBeGreaterThanOrEqual(5);
+  });
+
+  it('revoque une session individuelle par jti sans affecter les autres', async () => {
+    const { data: staff } = await supabase.from('staff_users').select('id').eq('tenant_id', tenantId).limit(1).single();
+    const realStaffId = staff!.id;
+    const jtiToRevoke = crypto.randomUUID();
+    const otherJti = crypto.randomUUID();
+
+    const before = await supabase.rpc('is_session_valid', {
+      p_jti: jtiToRevoke, p_staff_user_id: realStaffId, p_issued_at: new Date().toISOString(),
+    });
+    expect(before.data).toBe(true);
+
+    const { error: revokeError } = await supabase.rpc('revoke_session', {
+      p_jti: jtiToRevoke, p_staff_user_id: realStaffId,
+      p_expires_at: new Date(Date.now() + 3600_000).toISOString(), p_reason: 'vitest',
+    });
+    expect(revokeError).toBeNull();
+
+    const afterRevoked = await supabase.rpc('is_session_valid', {
+      p_jti: jtiToRevoke, p_staff_user_id: realStaffId, p_issued_at: new Date().toISOString(),
+    });
+    expect(afterRevoked.data).toBe(false);
+
+    const afterOther = await supabase.rpc('is_session_valid', {
+      p_jti: otherJti, p_staff_user_id: realStaffId, p_issued_at: new Date().toISOString(),
+    });
+    expect(afterOther.data).toBe(true);
+
+    await supabase.from('revoked_sessions').delete().eq('jti', jtiToRevoke);
+  });
+
+  afterAll(async () => {
+    await supabase.from('login_attempts').delete().eq('email', testEmail);
+    await supabase.from('security_events').delete().contains('metadata', { email: testEmail });
+  });
+});
+
+describe('TASK 4 — Housekeeping et déduplication import', () => {
+  it('synchronise rooms.status a vacant_clean quand une tache verified', async () => {
+    const { data: room } = await supabase
+      .from('rooms').select('id').eq('hotel_id', hotelId).eq('room_type_id', roomTypeId).limit(1).single();
+
+    await supabase.from('rooms').update({ status: 'vacant_dirty' }).eq('id', room!.id);
+    const { data: task } = await supabase
+      .from('housekeeping_tasks')
+      .insert({ tenant_id: tenantId, hotel_id: hotelId, room_id: room!.id, task_type: 'turnover', status: 'pending', priority: 'normal' })
+      .select('id').single();
+
+    await supabase.rpc('advance_housekeeping_task', { p_task_id: task!.id, p_hotel_id: hotelId, p_new_status: 'verified' });
+
+    const { data: after } = await supabase.from('rooms').select('status').eq('id', room!.id).single();
+    expect(after!.status).toBe('vacant_clean');
+  });
+
+  it('ne remet pas a vacant_clean une chambre redevenue occupee entre-temps', async () => {
+    const { data: room } = await supabase
+      .from('rooms').select('id').eq('hotel_id', hotelId).eq('room_type_id', roomTypeId).limit(1).single();
+
+    await supabase.from('rooms').update({ status: 'occupied' }).eq('id', room!.id);
+    const { data: task } = await supabase
+      .from('housekeeping_tasks')
+      .insert({ tenant_id: tenantId, hotel_id: hotelId, room_id: room!.id, task_type: 'cleaning', status: 'pending', priority: 'normal' })
+      .select('id').single();
+
+    await supabase.rpc('advance_housekeeping_task', { p_task_id: task!.id, p_hotel_id: hotelId, p_new_status: 'verified' });
+
+    const { data: after } = await supabase.from('rooms').select('status').eq('id', room!.id).single();
+    expect(after!.status).toBe('occupied');
+  });
+
+  it("evite un doublon de client au reimport (upsert par email)", async () => {
+    const email = `vitest-dedup-${Date.now()}@example.com`;
+    const { data: batch } = await supabase
+      .from('import_batches')
+      .insert({ tenant_id: tenantId, hotel_id: hotelId, source_system: 'generic_csv', file_name: 'v.csv', file_type: 'csv', status: 'validating' })
+      .select('id').single();
+
+    const { data: row1 } = await supabase.from('import_rows').insert({
+      tenant_id: tenantId, import_batch_id: batch!.id, row_number: 1,
+      raw_data: {}, normalized_data: { email, first_name: 'A', last_name: 'B', vip_tier: 'gold' },
+      status: 'valid', target_entity_type: 'guest',
+    }).select('id').single();
+    await supabase.rpc('apply_import_row', { p_row_id: row1!.id });
+
+    const { data: row2 } = await supabase.from('import_rows').insert({
+      tenant_id: tenantId, import_batch_id: batch!.id, row_number: 2,
+      raw_data: {}, normalized_data: { email, first_name: 'A', last_name: 'B', vip_tier: 'platinum' },
+      status: 'valid', target_entity_type: 'guest',
+    }).select('id').single();
+    await supabase.rpc('apply_import_row', { p_row_id: row2!.id });
+
+    const { count } = await supabase.from('guests').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('email', email);
+    expect(count).toBe(1);
+
+    await supabase.from('import_rows').delete().eq('import_batch_id', batch!.id);
+    await supabase.from('import_batches').delete().eq('id', batch!.id);
+    await supabase.from('guests').delete().eq('email', email);
   });
 });
