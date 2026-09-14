@@ -332,27 +332,29 @@ describe('TASK 2 — Authentification (rate limiting, traçabilité, révocation
   });
 
   it('revoque une session individuelle par jti sans affecter les autres', async () => {
+    const { data: staff } = await supabase.from('staff_users').select('id').eq('tenant_id', tenantId).limit(1).single();
+    const realStaffId = staff!.id;
     const jtiToRevoke = crypto.randomUUID();
     const otherJti = crypto.randomUUID();
-    const fakeStaffId = '00000000-0000-0000-0000-000000000001';
 
     const before = await supabase.rpc('is_session_valid', {
-      p_jti: jtiToRevoke, p_staff_user_id: fakeStaffId, p_issued_at: new Date().toISOString(),
+      p_jti: jtiToRevoke, p_staff_user_id: realStaffId, p_issued_at: new Date().toISOString(),
     });
     expect(before.data).toBe(true);
 
-    await supabase.rpc('revoke_session', {
-      p_jti: jtiToRevoke, p_staff_user_id: fakeStaffId,
+    const { error: revokeError } = await supabase.rpc('revoke_session', {
+      p_jti: jtiToRevoke, p_staff_user_id: realStaffId,
       p_expires_at: new Date(Date.now() + 3600_000).toISOString(), p_reason: 'vitest',
     });
+    expect(revokeError).toBeNull();
 
     const afterRevoked = await supabase.rpc('is_session_valid', {
-      p_jti: jtiToRevoke, p_staff_user_id: fakeStaffId, p_issued_at: new Date().toISOString(),
+      p_jti: jtiToRevoke, p_staff_user_id: realStaffId, p_issued_at: new Date().toISOString(),
     });
     expect(afterRevoked.data).toBe(false);
 
     const afterOther = await supabase.rpc('is_session_valid', {
-      p_jti: otherJti, p_staff_user_id: fakeStaffId, p_issued_at: new Date().toISOString(),
+      p_jti: otherJti, p_staff_user_id: realStaffId, p_issued_at: new Date().toISOString(),
     });
     expect(afterOther.data).toBe(true);
 
