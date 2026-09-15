@@ -122,7 +122,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
 
   return (
     <div>
-      <header className="mb-6 flex items-end justify-between">
+      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-3xl text-parchment">Réservations</h1>
           <p className="mt-1 text-sm text-ink-400">{reservations.length} dossiers les plus récents</p>
@@ -192,7 +192,8 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
 
       {actionError && <p className="mb-4 text-sm text-wine">{actionError}</p>}
 
-      <table className="w-full border-collapse text-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-ink-700 text-left text-ink-400">
             <th className="py-2 pr-4 font-normal">Confirmation</th>
@@ -259,6 +260,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
           ))}
         </tbody>
       </table>
+      </div>
 
       {openFolioFor && <FolioPanel reservationId={openFolioFor} onClose={() => { setOpenFolioFor(null); load(); }} />}
     </div>

@@ -26,14 +26,14 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-      <nav className="flex gap-0.5 border-t border-white/10 px-4">
+      <nav className="flex gap-0.5 overflow-x-auto border-t border-white/10 px-4">
         {ITEMS.map((item) => {
           const active = pathname?.startsWith(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`border-b-2 px-4 py-2.5 text-sm transition-colors ${
+              className={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2.5 text-sm transition-colors ${
                 active
                   ? 'border-brass-light bg-white text-headerbar font-medium'
                   : 'border-transparent text-white/75 hover:bg-white/10 hover:text-white'
