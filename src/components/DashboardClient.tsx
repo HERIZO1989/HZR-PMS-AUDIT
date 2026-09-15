@@ -56,13 +56,13 @@ export function DashboardClient({ hotelId }: { hotelId: string }) {
       </header>
 
       {/* Registre de performance — pas de cartes identiques, une ligne unifiée separee par des filets */}
-      <section className="mb-12 grid grid-cols-3 divide-x divide-ink-700 border-y border-ink-700">
+      <section className="mb-12 grid grid-cols-1 divide-y divide-ink-700 border-y border-ink-700 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         <Stat label="Occupation" value={formatPercent(kpis?.averages.occupancy_rate ?? 0)} />
         <Stat label="ADR" value={formatCurrency(kpis?.averages.adr ?? 0)} />
         <Stat label="RevPAR" value={formatCurrency(kpis?.averages.revpar ?? 0)} />
       </section>
 
-      <section className="mb-12 grid grid-cols-2 gap-8">
+      <section className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-2">
         <div>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-display text-lg text-parchment">Occupation</h2>
