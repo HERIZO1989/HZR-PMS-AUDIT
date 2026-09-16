@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
+import { sendPaymentReceipt } from '@/lib/email';
 
 /**
  * PARTIE D — Paiement. Le montant n'est JAMAIS pris tel quel sans validation : la fonction
@@ -32,5 +33,23 @@ export async function POST(req: NextRequest, { params }: { params: { folioId: st
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 422 });
+
+  // BUG-14 - Recu de paiement par email (best-effort, meme politique que les confirmations).
+  const { data: hotel } = await supabase.from('hotels').select('name').eq('id', session!.hotelId).single();
+  const { data: guest } = await supabase.from('guests').select('email, first_name, last_name').eq('id', data.guest_id).single();
+
+  if (guest?.email && hotel?.name) {
+    await sendPaymentReceipt({
+      guestEmail: guest.email,
+      guestName: `${guest.first_name} ${guest.last_name}`,
+      hotelName: hotel.name,
+      folioNumber: data.folio_number,
+      amount: Number(amount),
+      method,
+      currencyCode: data.currency_code,
+      newBalance: Number(data.balance),
+    });
+  }
+
   return NextResponse.json({ folio: data });
 }
