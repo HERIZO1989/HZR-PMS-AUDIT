@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
+import { sendReservationConfirmation } from '@/lib/email';
 
 export async function GET(req: NextRequest) {
   const hotelId = req.nextUrl.searchParams.get('hotelId');
@@ -89,6 +90,24 @@ export async function POST(req: NextRequest) {
     // 23P01 = exclusion_violation Postgres -> conflit de disponibilite reel, pas une erreur serveur generique
     const status = error.code === '23P01' ? 409 : 422;
     return NextResponse.json({ error: error.message }, { status });
+  }
+
+  // BUG-14 - Envoi de la confirmation par email (best-effort : n'echoue jamais la reponse
+  // HTTP, la reservation est deja creee et validee en base a ce stade).
+  const { data: hotel } = await supabase.from('hotels').select('name').eq('id', session!.hotelId).single();
+  const { data: guest } = await supabase.from('guests').select('email, first_name, last_name').eq('id', data.guest_id).single();
+
+  if (guest?.email && hotel?.name) {
+    await sendReservationConfirmation({
+      guestEmail: guest.email,
+      guestName: `${guest.first_name} ${guest.last_name}`,
+      confirmationNumber: data.confirmation_number,
+      hotelName: hotel.name,
+      arrivalDate: data.arrival_date,
+      departureDate: data.departure_date,
+      totalAmount: Number(data.total_amount),
+      currencyCode: data.currency_code,
+    });
   }
 
   return NextResponse.json({ reservation: data }, { status: 201 });
