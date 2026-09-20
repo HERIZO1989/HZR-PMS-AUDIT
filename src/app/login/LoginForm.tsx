@@ -36,30 +36,30 @@ export function LoginForm() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ink-900 px-6">
       <div className="w-full max-w-sm">
-        <div className="mb-10 text-center">
-          <div className="font-display text-2xl text-parchment">Riviera</div>
-          <div className="text-xs text-ink-400">Suite PMS</div>
+        <div className="mb-12 text-center">
+          <div className="font-display text-4xl italic text-parchment">PMS Audit</div>
+          <div className="mt-2 text-[11px] tracking-wide text-ink-400">Gestion hôtelière</div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 border border-ink-700 p-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5 border-t-2 border-brass bg-ink-800/60 p-7">
           <div>
-            <label className="mb-1 block text-xs text-ink-400">Email</label>
+            <label className="mb-1.5 block text-xs text-ink-400">Email</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-parchment focus:border-brass"
+              className="w-full border border-ink-600 bg-ink-900 px-3 py-2.5 text-sm text-parchment transition-colors focus:border-brass focus:outline-none"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-ink-400">Mot de passe</label>
+            <label className="mb-1.5 block text-xs text-ink-400">Mot de passe</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-parchment focus:border-brass"
+              className="w-full border border-ink-600 bg-ink-900 px-3 py-2.5 text-sm text-parchment transition-colors focus:border-brass focus:outline-none"
             />
           </div>
 
@@ -68,13 +68,13 @@ export function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 border border-brass-dim py-2 text-sm text-brass-light hover:border-brass hover:text-brass disabled:opacity-50"
+            className="mt-1 border border-brass bg-brass py-2.5 text-sm font-medium text-white transition-colors hover:bg-brass-dim disabled:opacity-50"
           >
             {loading ? 'Connexion…' : 'Se connecter'}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-ink-400">
+        <p className="mt-5 text-center text-xs text-ink-400">
           Compte de démo : gm@demo.local — mot de passe Demo1234!
         </p>
       </div>

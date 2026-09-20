@@ -15,6 +15,12 @@ export function getSupabaseAdmin() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+export async function getHotelBrand(hotelId: string): Promise<{ name: string; currencyCode: string }> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from('hotels').select('name, currency_code').eq('id', hotelId).single();
+  return { name: data?.name ?? 'Hôtel', currencyCode: data?.currency_code ?? 'EUR' };
+}
+
 export function getDemoHotelId(): string {
   const id = process.env.NEXT_PUBLIC_DEMO_HOTEL_ID;
   if (!id) throw new Error('NEXT_PUBLIC_DEMO_HOTEL_ID manquant');

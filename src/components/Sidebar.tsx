@@ -20,10 +20,8 @@ export function Sidebar() {
     <div className="bg-headerbar">
       <div className="flex items-center justify-between px-6 py-2.5">
         <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center bg-brass text-sm font-bold text-white">R</div>
-          <div>
-            <div className="text-sm font-semibold leading-none text-white">Riviera Suite PMS</div>
-          </div>
+          <div className="flex h-7 w-7 items-center justify-center bg-brass text-sm font-bold text-white">P</div>
+          <div className="font-display text-base italic leading-none text-white">PMS Audit</div>
         </div>
       </div>
       <nav className="flex gap-0.5 overflow-x-auto border-t border-white/10 px-4">

@@ -24,7 +24,7 @@ const config: Config = {
         headerbar: '#0B3C5D',
       },
       fontFamily: {
-        display: ['var(--font-plex)', 'sans-serif'],
+        display: ['var(--font-fraunces)', 'Georgia', 'serif'],
         sans: ['var(--font-plex)', 'sans-serif'],
       },
       borderRadius: {

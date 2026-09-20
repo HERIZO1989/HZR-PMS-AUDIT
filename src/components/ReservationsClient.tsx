@@ -41,6 +41,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
   // Formulaire de creation (PARTIE I)
   const [showForm, setShowForm] = useState(false);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
+  const [roomTypesCurrency, setRoomTypesCurrency] = useState('EUR');
   const [roomTypeId, setRoomTypeId] = useState('');
   const [arrivalDate, setArrivalDate] = useState('');
   const [departureDate, setDepartureDate] = useState('');
@@ -67,7 +68,10 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
     if (showForm && roomTypes.length === 0) {
       fetch(`/api/room-types?hotelId=${hotelId}`)
         .then((r) => r.json())
-        .then((d) => setRoomTypes(d.roomTypes ?? []));
+        .then((d) => {
+          setRoomTypes(d.roomTypes ?? []);
+          setRoomTypesCurrency(d.currencyCode ?? 'EUR');
+        });
     }
   }, [showForm, hotelId, roomTypes.length]);
 
@@ -141,7 +145,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
             <select value={roomTypeId} onChange={(e) => setRoomTypeId(e.target.value)} className="border border-ink-600 bg-white px-2 py-1.5 text-sm">
               <option value="">Type de chambre</option>
               {roomTypes.map((rt) => (
-                <option key={rt.id} value={rt.id}>{rt.name} — {formatCurrency(rt.base_rate)}</option>
+                <option key={rt.id} value={rt.id}>{rt.name} — {formatCurrency(rt.base_rate, roomTypesCurrency)}</option>
               ))}
             </select>
             <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="border border-ink-600 bg-white px-2 py-1.5 text-sm" />

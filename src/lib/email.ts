@@ -6,7 +6,7 @@ import { formatCurrency, formatDate } from './formatters';
 // du compte proprietaire, pas a n'importe quel client reel. Pour un envoi reel a tous
 // les clients, un domaine verifie (ex. mail.riviera-pms.com) doit etre configure dans
 // le dashboard Resend puis utilise ici a la place de FROM_ADDRESS.
-const FROM_ADDRESS = 'Riviera Suite PMS <onboarding@resend.dev>';
+const FROM_ADDRESS = 'PMS Audit <onboarding@resend.dev>';
 
 function getResendClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY;
