@@ -9,6 +9,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from 'recharts';
+import { getCurrencySymbol } from '@/lib/formatters';
 
 interface SeriesPoint {
   business_date: string;
@@ -29,22 +30,31 @@ function formatDateShort(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(new Date(iso));
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label, currencySymbol }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div className="border border-ink-600 bg-ink-800 px-3 py-2 text-xs">
       <div className="mb-1 text-ink-400">{formatDateShort(label)}</div>
       {payload.map((entry: any) => (
         <div key={entry.dataKey} style={{ color: entry.color }} className="tabular">
-          {entry.name}: {entry.dataKey === 'occupancy_rate' ? `${(entry.value * 100).toFixed(1)}%` : `${entry.value.toFixed(0)} €`}
+          {entry.name}: {entry.dataKey === 'occupancy_rate' ? `${(entry.value * 100).toFixed(1)}%` : `${entry.value.toFixed(0)} ${currencySymbol}`}
         </div>
       ))}
     </div>
   );
 }
 
-export function KpiTrendChart({ series, metric }: { series: SeriesPoint[]; metric: 'occupancy' | 'money' }) {
+export function KpiTrendChart({
+  series,
+  metric,
+  currencyCode = 'EUR',
+}: {
+  series: SeriesPoint[];
+  metric: 'occupancy' | 'money';
+  currencyCode?: string;
+}) {
   if (series.length === 0) return null;
+  const currencySymbol = getCurrencySymbol(currencyCode);
 
   return (
     <div className="h-64 w-full">
@@ -65,10 +75,10 @@ export function KpiTrendChart({ series, metric }: { series: SeriesPoint[]; metri
             tick={{ fontSize: 11, fill: COLORS.axis }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v) => (metric === 'occupancy' ? `${Math.round(v * 100)}%` : `${Math.round(v)}€`)}
+            tickFormatter={(v) => (metric === 'occupancy' ? `${Math.round(v * 100)}%` : `${Math.round(v)}${currencySymbol}`)}
             width={48}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip currencySymbol={currencySymbol} />} />
           {metric === 'occupancy' ? (
             <Line
               type="monotone"

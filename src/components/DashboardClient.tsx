@@ -20,7 +20,15 @@ interface Finding {
   recommendation: string | null;
 }
 
-export function DashboardClient({ hotelId }: { hotelId: string }) {
+export function DashboardClient({
+  hotelId,
+  hotelName,
+  currencyCode,
+}: {
+  hotelId: string;
+  hotelName: string;
+  currencyCode: string;
+}) {
   const [kpis, setKpis] = useState<KpiResponse | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,14 +60,14 @@ export function DashboardClient({ hotelId }: { hotelId: string }) {
     <div className="max-w-5xl">
       <header className="mb-10">
         <h1 className="font-display text-3xl text-parchment">Tableau de bord</h1>
-        <p className="mt-1 text-sm text-ink-400">30 derniers jours clos — Grand Hotel Riviera Cannes</p>
+        <p className="mt-1 text-sm text-ink-400">30 derniers jours clos — {hotelName}</p>
       </header>
 
       {/* Registre de performance — pas de cartes identiques, une ligne unifiée separee par des filets */}
       <section className="mb-12 grid grid-cols-1 divide-y divide-ink-700 border-y border-ink-700 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
         <Stat label="Occupation" value={formatPercent(kpis?.averages.occupancy_rate ?? 0)} />
-        <Stat label="ADR" value={formatCurrency(kpis?.averages.adr ?? 0)} />
-        <Stat label="RevPAR" value={formatCurrency(kpis?.averages.revpar ?? 0)} />
+        <Stat label="ADR" value={formatCurrency(kpis?.averages.adr ?? 0, currencyCode)} />
+        <Stat label="RevPAR" value={formatCurrency(kpis?.averages.revpar ?? 0, currencyCode)} />
       </section>
 
       <section className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-2">
@@ -68,7 +76,7 @@ export function DashboardClient({ hotelId }: { hotelId: string }) {
             <h2 className="font-display text-lg text-parchment">Occupation</h2>
             <span className="text-xs text-ink-400">30 jours</span>
           </div>
-          <KpiTrendChart series={kpis?.series ?? []} metric="occupancy" />
+          <KpiTrendChart series={kpis?.series ?? []} metric="occupancy" currencyCode={currencyCode} />
         </div>
         <div>
           <div className="mb-3 flex items-center justify-between gap-4">
@@ -82,7 +90,7 @@ export function DashboardClient({ hotelId }: { hotelId: string }) {
               </span>
             </span>
           </div>
-          <KpiTrendChart series={kpis?.series ?? []} metric="money" />
+          <KpiTrendChart series={kpis?.series ?? []} metric="money" currencyCode={currencyCode} />
         </div>
       </section>
 
@@ -117,7 +125,7 @@ export function DashboardClient({ hotelId }: { hotelId: string }) {
                 <p className="font-medium text-parchment">{f.title}</p>
                 <p className="mt-1 text-sm text-ink-400">{f.description}</p>
                 {f.recommendation && (
-                  <p className="mt-2 text-sm italic text-brass-light">→ {f.recommendation}</p>
+                  <p className="mt-2 border-l-2 border-brass-light/40 pl-3 text-sm italic text-brass-light">{f.recommendation}</p>
                 )}
               </li>
             ))}

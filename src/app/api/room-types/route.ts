@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
+import { getSupabaseAdmin, getHotelBrand } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest } from '@/lib/session';
 
 export async function GET(req: NextRequest) {
@@ -20,5 +20,6 @@ export async function GET(req: NextRequest) {
     .order('base_rate', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ roomTypes: data });
+  const { currencyCode } = await getHotelBrand(hotelId);
+  return NextResponse.json({ roomTypes: data, currencyCode });
 }
