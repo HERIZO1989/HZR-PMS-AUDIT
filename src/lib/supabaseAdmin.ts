@@ -20,9 +20,3 @@ export async function getHotelBrand(hotelId: string): Promise<{ name: string; cu
   const { data } = await supabase.from('hotels').select('name, currency_code').eq('id', hotelId).single();
   return { name: data?.name ?? 'Hôtel', currencyCode: data?.currency_code ?? 'EUR' };
 }
-
-export function getDemoHotelId(): string {
-  const id = process.env.NEXT_PUBLIC_DEMO_HOTEL_ID;
-  if (!id) throw new Error('NEXT_PUBLIC_DEMO_HOTEL_ID manquant');
-  return id;
-}
