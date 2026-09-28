@@ -1,0 +1,30 @@
+name: E2E Production Verification
+
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: https://pms-riviera.onrender.com
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Verifier que le health check est vert avant de commencer
+        run: |
+          for i in $(seq 1 20); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/health")
+            if [ "$CODE" = "200" ]; then echo "OK: service pret"; exit 0; fi
+            echo "Attente du service (tentative $i, code $CODE)..."
+            sleep 10
+          done
+          echo "ECHEC: service jamais devenu pret"
+          exit 1
+
+      - name: Executer la suite E2E HTTP reelle
+        run: bash .github/scripts/e2e-production.sh
+
+      - name: Nettoyage des donnees de test (toujours execute)
+        if: always()
+        run: bash .github/scripts/e2e-cleanup.sh
