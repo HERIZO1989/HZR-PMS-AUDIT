@@ -41,6 +41,9 @@ for TENANT_ID in "${TENANT_A_ID:-}" "${TENANT_B_ID:-}"; do
   STAFF_IDS=$(curl -s "$SUPABASE_URL/rest/v1/staff_users?tenant_id=eq.$TENANT_ID&select=id" \
     -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" | jq -r '.[].id')
   for SID in $STAFF_IDS; do
+    # revoked_sessions et security_events (actor) referencent staff_users : a supprimer avant le compte
+    sb_del "revoked_sessions?staff_user_id=eq.$SID"
+    sb_del "security_events?actor_user_id=eq.$SID"
     sb_del "staff_user_roles?staff_user_id=eq.$SID"
   done
   ROLE_IDS=$(curl -s "$SUPABASE_URL/rest/v1/roles?tenant_id=eq.$TENANT_ID&select=id" \
