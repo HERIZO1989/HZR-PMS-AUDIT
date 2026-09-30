@@ -9,10 +9,15 @@ function getClientIp(req: NextRequest): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const { email, password } = await req.json();
+  const { email, password, tenantCode } = await req.json();
   if (!email || !password) {
     return NextResponse.json({ error: 'Email et mot de passe requis' }, { status: 400 });
   }
+
+  // TASK 12 - code d'etablissement OPTIONNEL : necessaire uniquement si le meme email existe dans
+  // plusieurs tenants (sinon la connexion est refusee comme ambigue).
+  const scopedTenantCode =
+    typeof tenantCode === 'string' && tenantCode.trim() !== '' ? tenantCode.trim().slice(0, 64) : null;
 
   const ip = getClientIp(req);
   const userAgent = req.headers.get('user-agent');
@@ -25,6 +30,7 @@ export async function POST(req: NextRequest) {
     p_password: password,
     p_ip_address: ip,
     p_user_agent: userAgent,
+    p_tenant_code: scopedTenantCode,
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

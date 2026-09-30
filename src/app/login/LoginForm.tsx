@@ -8,6 +8,7 @@ export function LoginForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState('gm@demo.local');
   const [password, setPassword] = useState('');
+  const [tenantCode, setTenantCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -19,7 +20,7 @@ export function LoginForm() {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, tenantCode: tenantCode.trim() || undefined }),
     });
 
     setLoading(false);
@@ -60,6 +61,18 @@ export function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full border border-ink-600 bg-ink-900 px-3 py-2.5 text-sm text-parchment transition-colors focus:border-brass focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs text-ink-400">Code établissement (facultatif)</label>
+            <input
+              type="text"
+              value={tenantCode}
+              onChange={(e) => setTenantCode(e.target.value)}
+              placeholder="ex. ANJARY — seulement si demandé"
+              autoCapitalize="characters"
+              className="w-full border border-ink-600 bg-ink-900 px-3 py-2.5 text-sm text-parchment transition-colors placeholder:text-ink-600 focus:border-brass focus:outline-none"
             />
           </div>
 
