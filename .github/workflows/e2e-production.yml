@@ -11,6 +11,9 @@ jobs:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
+      - name: Recuperer le code (scripts E2E)
+        uses: actions/checkout@v4
+
       - name: Verifier que le health check est vert avant de commencer
         run: |
           for i in $(seq 1 20); do

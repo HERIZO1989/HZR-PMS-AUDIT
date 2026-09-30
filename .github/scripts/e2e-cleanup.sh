@@ -14,6 +14,9 @@ sb_del() { # $1=path+query
     -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" > /dev/null
 }
 
+# Tentatives de login du compte de test (email unique E2E)
+[ -n "${E2E_EMAIL:-}" ] && sb_del "login_attempts?email=eq.$E2E_EMAIL"
+
 for HOTEL_ID in "${HOTEL_A_ID:-}" "${HOTEL_B_ID:-}"; do
   [ -z "$HOTEL_ID" ] && continue
   sb_del "audit_events?hotel_id=eq.$HOTEL_ID"
@@ -38,6 +41,9 @@ for TENANT_ID in "${TENANT_A_ID:-}" "${TENANT_B_ID:-}"; do
   STAFF_IDS=$(curl -s "$SUPABASE_URL/rest/v1/staff_users?tenant_id=eq.$TENANT_ID&select=id" \
     -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" | jq -r '.[].id')
   for SID in $STAFF_IDS; do
+    # revoked_sessions et security_events (actor) referencent staff_users : a supprimer avant le compte
+    sb_del "revoked_sessions?staff_user_id=eq.$SID"
+    sb_del "security_events?actor_user_id=eq.$SID"
     sb_del "staff_user_roles?staff_user_id=eq.$SID"
   done
   ROLE_IDS=$(curl -s "$SUPABASE_URL/rest/v1/roles?tenant_id=eq.$TENANT_ID&select=id" \
