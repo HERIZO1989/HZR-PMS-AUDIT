@@ -322,6 +322,41 @@ describe('TASK 2 — Authentification (rate limiting, traçabilité, révocation
     expect(data[0].locked).toBe(true);
   });
 
+  it('TASK 12 - login cible par code de tenant : refuse un mauvais code, accepte le bon', async () => {
+    const { data: staff } = await supabase.from('staff_users').select('id').eq('tenant_id', tenantId).limit(1).single();
+    const { data: tenant } = await supabase.from('tenants').select('code').eq('id', tenantId).single();
+    const uniqueEmail = `vitest-scope-${Date.now()}@example.com`;
+    const { data: hashRaw } = await supabase.rpc('generate_demo_staff_password_hash');
+    const { error } = await supabase
+      .from('staff_users')
+      .update({ email: uniqueEmail, password_hash: hashRaw as string })
+      .eq('id', staff!.id);
+    expect(error).toBeNull();
+
+    try {
+      const wrong = await supabase.rpc('attempt_staff_login', {
+        p_email: uniqueEmail, p_password: 'Demo1234!', p_user_agent: 'vitest', p_tenant_code: 'CODE_INEXISTANT',
+      });
+      expect(wrong.data[0].staff_user_id).toBeNull();
+
+      const right = await supabase.rpc('attempt_staff_login', {
+        p_email: uniqueEmail, p_password: 'Demo1234!', p_user_agent: 'vitest', p_tenant_code: tenant!.code,
+      });
+      expect(right.data[0].staff_user_id).toBe(staff!.id);
+      expect(right.data[0].tenant_id).toBe(tenantId);
+
+      // Sans code : email unique -> non ambigu, la connexion reussit aussi (retrocompatibilite)
+      const noCode = await supabase.rpc('attempt_staff_login', {
+        p_email: uniqueEmail, p_password: 'Demo1234!', p_user_agent: 'vitest',
+      });
+      expect(noCode.data[0].staff_user_id).toBe(staff!.id);
+    } finally {
+      // security_events (actor) reference staff_users : supprimer avant le nettoyage du tenant
+      await supabase.from('security_events').delete().eq('actor_user_id', staff!.id);
+      await supabase.from('login_attempts').delete().eq('email', uniqueEmail);
+    }
+  });
+
   it('trace chaque tentative dans security_events', async () => {
     const { count } = await supabase
       .from('security_events')
