@@ -47,9 +47,15 @@ STAFF_ID=$(echo "$STAFF" | jq -r '.[0].id')
 STAFF_EMAIL=$(echo "$STAFF" | jq -r '.[0].email')
 [ "$STAFF_ID" != "null" ] && [ -n "$STAFF_ID" ] || fail "recuperation staff: $STAFF"
 
+# verify_staff_login cherche par email seul : les comptes demo (owner@demo.local...) existent dans
+# plusieurs tenants, le login tomberait sur un autre tenant. On donne donc au compte de test un
+# email unique pour que le login HTTP vise sans ambiguite le compte de l'hotel A.
+STAFF_EMAIL="e2e-ci-$(date +%s)-$RANDOM@ci.local"
+echo "E2E_EMAIL=$STAFF_EMAIL" >> "$STATE_FILE"
+
 HASH_RAW=$(sb_post generate_demo_staff_password_hash '{}')
 HASH_CLEAN=$(echo "$HASH_RAW" | jq -r '.')
-sb_patch "staff_users?id=eq.$STAFF_ID" "{\"password_hash\":\"$HASH_CLEAN\"}" > /dev/null
+sb_patch "staff_users?id=eq.$STAFF_ID" "{\"password_hash\":\"$HASH_CLEAN\",\"email\":\"$STAFF_EMAIL\"}" > /dev/null
 ok "staff $STAFF_EMAIL pret avec mot de passe Demo1234!"
 
 echo "=== 3. TASK 2 — rate limiting reel (5 echecs -> verrouillage) ==="

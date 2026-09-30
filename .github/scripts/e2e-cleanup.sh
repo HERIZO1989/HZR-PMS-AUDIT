@@ -14,6 +14,9 @@ sb_del() { # $1=path+query
     -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" > /dev/null
 }
 
+# Tentatives de login du compte de test (email unique E2E)
+[ -n "${E2E_EMAIL:-}" ] && sb_del "login_attempts?email=eq.$E2E_EMAIL"
+
 for HOTEL_ID in "${HOTEL_A_ID:-}" "${HOTEL_B_ID:-}"; do
   [ -z "$HOTEL_ID" ] && continue
   sb_del "audit_events?hotel_id=eq.$HOTEL_ID"
