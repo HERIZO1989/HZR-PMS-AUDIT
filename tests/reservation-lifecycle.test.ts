@@ -75,9 +75,24 @@ afterAll(async () => {
   await supabase.from('folios').delete().eq('hotel_id', hotelId);
   await supabase.from('reservation_stays').delete().eq('hotel_id', hotelId);
   await supabase.from('reservations').delete().eq('hotel_id', hotelId);
+  // Tables qui referencent staff_users (FK run_by / resolved_by / assigned_to / uploaded_by) :
+  // a vider avant les comptes, sinon le tenant de test reste en base (constate : night_audit_runs).
+  await supabase.from('import_rows').delete().eq('tenant_id', tenantId);
+  await supabase.from('import_batches').delete().eq('hotel_id', hotelId);
+  await supabase.from('concierge_requests').delete().eq('hotel_id', hotelId);
+  await supabase.from('audit_findings').delete().eq('hotel_id', hotelId);
+  await supabase.from('night_audit_checks').delete().eq('tenant_id', tenantId);
+  await supabase.from('night_audit_runs').delete().eq('hotel_id', hotelId);
   const { data: staff } = await supabase.from('staff_users').select('id').eq('tenant_id', tenantId);
   const staffIds = (staff ?? []).map((s) => s.id);
-  if (staffIds.length) await supabase.from('staff_user_roles').delete().in('staff_user_id', staffIds);
+  if (staffIds.length) {
+    // Les logins reussis des tests creent des lignes qui referencent staff_users (FK) : sans ces
+    // suppressions, la suppression des comptes echoue en silence et le tenant reste en base.
+    await supabase.from('revoked_sessions').delete().in('staff_user_id', staffIds);
+    await supabase.from('security_events').delete().in('actor_user_id', staffIds);
+    await supabase.from('staff_user_roles').delete().in('staff_user_id', staffIds);
+  }
+  await supabase.from('security_events').delete().eq('tenant_id', tenantId);
   const { data: roles } = await supabase.from('roles').select('id').eq('tenant_id', tenantId);
   const roleIds = (roles ?? []).map((r) => r.id);
   if (roleIds.length) await supabase.from('role_permissions').delete().in('role_id', roleIds);
@@ -85,10 +100,16 @@ afterAll(async () => {
   await supabase.from('roles').delete().eq('tenant_id', tenantId);
   await supabase.from('guests').delete().eq('tenant_id', tenantId);
   await supabase.from('rooms').delete().eq('hotel_id', hotelId);
+  await supabase.from('rate_calendar').delete().eq('tenant_id', tenantId);
+  await supabase.from('rate_plans').delete().eq('tenant_id', tenantId);
   await supabase.from('room_types').delete().eq('hotel_id', hotelId);
   await supabase.from('subscriptions').delete().eq('tenant_id', tenantId);
   await supabase.from('hotels').delete().eq('id', hotelId);
-  await supabase.from('tenants').delete().eq('id', tenantId);
+  const { error: tenantDeleteError } = await supabase.from('tenants').delete().eq('id', tenantId);
+  // Ne plus echouer en silence : un tenant de test residuel pollue la base de production.
+  if (tenantDeleteError) {
+    console.warn(`[cleanup] tenant de test ${tenantId} non supprime : ${tenantDeleteError.message}`);
+  }
 });
 
 describe('Réservation — création et disponibilité', () => {
