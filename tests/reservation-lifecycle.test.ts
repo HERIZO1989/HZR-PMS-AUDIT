@@ -81,6 +81,7 @@ afterAll(async () => {
   await supabase.from('import_batches').delete().eq('hotel_id', hotelId);
   await supabase.from('concierge_requests').delete().eq('hotel_id', hotelId);
   await supabase.from('audit_findings').delete().eq('hotel_id', hotelId);
+  await supabase.from('night_audit_checks').delete().eq('tenant_id', tenantId);
   await supabase.from('night_audit_runs').delete().eq('hotel_id', hotelId);
   const { data: staff } = await supabase.from('staff_users').select('id').eq('tenant_id', tenantId);
   const staffIds = (staff ?? []).map((s) => s.id);
@@ -99,6 +100,8 @@ afterAll(async () => {
   await supabase.from('roles').delete().eq('tenant_id', tenantId);
   await supabase.from('guests').delete().eq('tenant_id', tenantId);
   await supabase.from('rooms').delete().eq('hotel_id', hotelId);
+  await supabase.from('rate_calendar').delete().eq('tenant_id', tenantId);
+  await supabase.from('rate_plans').delete().eq('tenant_id', tenantId);
   await supabase.from('room_types').delete().eq('hotel_id', hotelId);
   await supabase.from('subscriptions').delete().eq('tenant_id', tenantId);
   await supabase.from('hotels').delete().eq('id', hotelId);
