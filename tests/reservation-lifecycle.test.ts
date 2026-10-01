@@ -75,6 +75,13 @@ afterAll(async () => {
   await supabase.from('folios').delete().eq('hotel_id', hotelId);
   await supabase.from('reservation_stays').delete().eq('hotel_id', hotelId);
   await supabase.from('reservations').delete().eq('hotel_id', hotelId);
+  // Tables qui referencent staff_users (FK run_by / resolved_by / assigned_to / uploaded_by) :
+  // a vider avant les comptes, sinon le tenant de test reste en base (constate : night_audit_runs).
+  await supabase.from('import_rows').delete().eq('tenant_id', tenantId);
+  await supabase.from('import_batches').delete().eq('hotel_id', hotelId);
+  await supabase.from('concierge_requests').delete().eq('hotel_id', hotelId);
+  await supabase.from('audit_findings').delete().eq('hotel_id', hotelId);
+  await supabase.from('night_audit_runs').delete().eq('hotel_id', hotelId);
   const { data: staff } = await supabase.from('staff_users').select('id').eq('tenant_id', tenantId);
   const staffIds = (staff ?? []).map((s) => s.id);
   if (staffIds.length) {
