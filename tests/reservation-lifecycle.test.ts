@@ -269,7 +269,12 @@ describe('TASK 15 — Restrictions de vente du calendrier', () => {
     expect(error).toBeNull();
     planId = data!.id;
 
-    const base = { tenant_id: tenantId, hotel_id: hotelId, rate_plan_id: planId, room_type_id: roomTypeId, rate: 100000 };
+    // Toutes les colonnes explicites : un insert groupe PostgREST met a NULL les cles absentes d'une ligne
+    // (violation NOT NULL sur stop_sell, closed_to_*, min_stay) des que les lignes n'ont pas les memes cles.
+    const base = {
+      tenant_id: tenantId, hotel_id: hotelId, rate_plan_id: planId, room_type_id: roomTypeId, rate: 100000,
+      stop_sell: false, closed_to_arrival: false, closed_to_departure: false, min_stay: 1, max_stay: null as number | null,
+    };
     const rows = [
       { ...base, date: '2029-03-01' },
       { ...base, date: '2029-03-02', stop_sell: true },
