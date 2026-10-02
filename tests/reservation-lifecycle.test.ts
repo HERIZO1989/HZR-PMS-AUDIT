@@ -186,6 +186,74 @@ describe('Réservation — création et disponibilité', () => {
   });
 });
 
+describe('TASK 14 — Tarification par calendrier et devise', () => {
+  let planId: string;
+  let inactivePlanId: string;
+  let baseRate: number;
+  let hotelCurrency: string;
+
+  beforeAll(async () => {
+    const { data: rt } = await supabase.from('room_types').select('base_rate').eq('id', roomTypeId).single();
+    baseRate = Number(rt!.base_rate);
+    const { data: hotel } = await supabase.from('hotels').select('currency_code').eq('id', hotelId).single();
+    hotelCurrency = hotel!.currency_code;
+
+    const mkPlan = async (code: string, status: string) => {
+      const { data, error } = await supabase
+        .from('rate_plans')
+        .insert({
+          tenant_id: tenantId, hotel_id: hotelId, room_type_id: null, code, name: `Plan test ${code}`,
+          meal_plan: 'room_only', is_refundable: true, status,
+        })
+        .select('id')
+        .single();
+      expect(error).toBeNull();
+      return data!.id as string;
+    };
+    planId = await mkPlan('T14', 'active');
+    inactivePlanId = await mkPlan('T14X', 'inactive');
+
+    const rows = [['2028-02-01', 100000], ['2028-02-02', 200000], ['2028-02-03', 300000]].map(([date, rate]) => ({
+      tenant_id: tenantId, hotel_id: hotelId, rate_plan_id: planId, room_type_id: roomTypeId, date, rate,
+    }));
+    const { error } = await supabase.from('rate_calendar').insert(rows);
+    expect(error).toBeNull();
+  });
+
+  const book = (arrival: string, departure: string, email: string, ratePlanId: string | null) =>
+    supabase.rpc('create_reservation', {
+      p_tenant_id: tenantId, p_hotel_id: hotelId, p_room_type_id: roomTypeId,
+      p_arrival_date: arrival, p_departure_date: departure, p_guest_email: email,
+      p_guest_first_name: 'Tarif', p_guest_last_name: 'Test', p_rate_plan_id: ratePlanId,
+    });
+
+  it('calcule le montant nuit par nuit a partir du calendrier du plan choisi', async () => {
+    const { data, error } = await book('2028-02-01', '2028-02-04', 'vitest.t14.a@example.com', planId);
+    expect(error).toBeNull();
+    expect(Number(data.total_amount)).toBe(600000);
+    expect(data.rate_plan_id).toBe(planId);
+  });
+
+  it("utilise la devise de l'hotel et non une devise en dur", async () => {
+    const { data, error } = await book('2028-02-01', '2028-02-02', 'vitest.t14.b@example.com', planId);
+    expect(error).toBeNull();
+    expect(data.currency_code).toBe(hotelCurrency);
+  });
+
+  it('retombe sur le tarif de base pour les nuits sans ligne de calendrier', async () => {
+    const { data, error } = await book('2028-05-01', '2028-05-04', 'vitest.t14.c@example.com', planId);
+    expect(error).toBeNull();
+    expect(Number(data.total_amount)).toBe(baseRate * 3);
+  });
+
+  it('refuse un plan tarifaire inactif ou inexistant', async () => {
+    const inactive = await book('2028-02-01', '2028-02-02', 'vitest.t14.d@example.com', inactivePlanId);
+    expect(inactive.error).not.toBeNull();
+    const unknown = await book('2028-02-01', '2028-02-02', 'vitest.t14.e@example.com', '00000000-0000-0000-0000-000000000000');
+    expect(unknown.error).not.toBeNull();
+  });
+});
+
 describe('Check-in / Check-out', () => {
   let reservationId: string;
   let roomId: string;
