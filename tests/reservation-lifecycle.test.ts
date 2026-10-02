@@ -254,6 +254,78 @@ describe('TASK 14 — Tarification par calendrier et devise', () => {
   });
 });
 
+describe('TASK 15 — Restrictions de vente du calendrier', () => {
+  let planId: string;
+
+  beforeAll(async () => {
+    const { data, error } = await supabase
+      .from('rate_plans')
+      .insert({
+        tenant_id: tenantId, hotel_id: hotelId, room_type_id: null, code: 'T15', name: 'Plan test restrictions',
+        meal_plan: 'room_only', is_refundable: true, status: 'active',
+      })
+      .select('id')
+      .single();
+    expect(error).toBeNull();
+    planId = data!.id;
+
+    // Toutes les colonnes explicites : un insert groupe PostgREST met a NULL les cles absentes d'une ligne
+    // (violation NOT NULL sur stop_sell, closed_to_*, min_stay) des que les lignes n'ont pas les memes cles.
+    const base = {
+      tenant_id: tenantId, hotel_id: hotelId, rate_plan_id: planId, room_type_id: roomTypeId, rate: 100000,
+      stop_sell: false, closed_to_arrival: false, closed_to_departure: false, min_stay: 1, max_stay: null as number | null,
+    };
+    const rows = [
+      { ...base, date: '2029-03-01' },
+      { ...base, date: '2029-03-02', stop_sell: true },
+      { ...base, date: '2029-03-03' },
+      { ...base, date: '2029-03-10', closed_to_arrival: true },
+      { ...base, date: '2029-03-11' },
+      { ...base, date: '2029-03-12', closed_to_departure: true },
+      { ...base, date: '2029-03-20', min_stay: 3 },
+      { ...base, date: '2029-03-21' },
+      { ...base, date: '2029-03-22' },
+      { ...base, date: '2029-03-23' },
+      { ...base, date: '2029-03-25', max_stay: 2 },
+    ];
+    const ins = await supabase.from('rate_calendar').insert(rows);
+    expect(ins.error).toBeNull();
+  });
+
+  const book = (arrival: string, departure: string, email: string) =>
+    supabase.rpc('create_reservation', {
+      p_tenant_id: tenantId, p_hotel_id: hotelId, p_room_type_id: roomTypeId,
+      p_arrival_date: arrival, p_departure_date: departure, p_guest_email: email,
+      p_guest_first_name: 'Restr', p_guest_last_name: 'Test', p_rate_plan_id: planId,
+    });
+
+  it('refuse un sejour qui couvre une nuit en stop-sell, accepte celui qui se termine la veille', async () => {
+    const blocked = await book('2029-03-01', '2029-03-03', 'vitest.t15.a@example.com');
+    expect(blocked.error?.message).toMatch(/stop-sell/);
+    const ok = await book('2029-03-01', '2029-03-02', 'vitest.t15.a2@example.com');
+    expect(ok.error).toBeNull();
+  });
+
+  it("refuse une arrivee un jour ferme a l'arrivee", async () => {
+    const blocked = await book('2029-03-10', '2029-03-11', 'vitest.t15.b@example.com');
+    expect(blocked.error?.message).toMatch(/ferme a l'arrivee/);
+  });
+
+  it('refuse un depart un jour ferme au depart', async () => {
+    const blocked = await book('2029-03-11', '2029-03-12', 'vitest.t15.c@example.com');
+    expect(blocked.error?.message).toMatch(/ferme au depart/);
+  });
+
+  it('applique le sejour minimum et maximum evalues sur la date darrivee', async () => {
+    const tooShort = await book('2029-03-20', '2029-03-22', 'vitest.t15.d@example.com');
+    expect(tooShort.error?.message).toMatch(/minimum de 3 nuits/);
+    const okMin = await book('2029-03-20', '2029-03-23', 'vitest.t15.d2@example.com');
+    expect(okMin.error).toBeNull();
+    const tooLong = await book('2029-03-25', '2029-03-28', 'vitest.t15.e@example.com');
+    expect(tooLong.error?.message).toMatch(/maximum de 2 nuits/);
+  });
+});
+
 describe('Check-in / Check-out', () => {
   let reservationId: string;
   let roomId: string;
