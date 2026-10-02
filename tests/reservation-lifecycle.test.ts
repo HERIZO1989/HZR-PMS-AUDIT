@@ -326,6 +326,57 @@ describe('TASK 15 — Restrictions de vente du calendrier', () => {
   });
 });
 
+describe('TASK 17 — Capacite et supplements par occupation', () => {
+  let flexTypeId: string;
+
+  beforeAll(async () => {
+    // Type de chambre dedie : base 2, max 4, supplement adulte 30 000, enfant 10 000, tarif de base 100 000
+    const { data, error } = await supabase
+      .from('room_types')
+      .insert({
+        tenant_id: tenantId, hotel_id: hotelId, code: 'T17', name: 'Type test occupation',
+        base_occupancy: 2, max_occupancy: 4, base_rate: 100000, extra_adult_fee: 30000, extra_child_fee: 10000,
+      })
+      .select('id')
+      .single();
+    expect(error).toBeNull();
+    flexTypeId = data!.id;
+  });
+
+  const book = (adults: number, children: number, email: string) =>
+    supabase.rpc('create_reservation', {
+      p_tenant_id: tenantId, p_hotel_id: hotelId, p_room_type_id: flexTypeId,
+      p_arrival_date: '2030-05-01', p_departure_date: '2030-05-04', p_guest_email: email,
+      p_guest_first_name: 'Occ', p_guest_last_name: 'Test', p_adults: adults, p_children: children,
+    });
+
+  it("ne facture aucun supplement dans la capacite de base", async () => {
+    const { data, error } = await book(2, 0, 'vitest.t17.a@example.com');
+    expect(error).toBeNull();
+    expect(Number(data.total_amount)).toBe(300000);
+  });
+
+  it('facture les adultes supplementaires par nuit', async () => {
+    const { data, error } = await book(3, 0, 'vitest.t17.b@example.com');
+    expect(error).toBeNull();
+    expect(Number(data.total_amount)).toBe(300000 + 3 * 30000);
+  });
+
+  it('facture les enfants au-dela des places restantes de la base', async () => {
+    // 1 adulte + 2 enfants : 1 enfant occupe la 2e place de base, l autre est en supplement
+    const { data, error } = await book(1, 2, 'vitest.t17.c@example.com');
+    expect(error).toBeNull();
+    expect(Number(data.total_amount)).toBe(300000 + 3 * 10000);
+  });
+
+  it('refuse le depassement de capacite et l absence d adulte', async () => {
+    const over = await book(3, 2, 'vitest.t17.d@example.com');
+    expect(over.error?.message).toMatch(/Capacite maximale de 4 personnes/);
+    const noAdult = await book(0, 1, 'vitest.t17.e@example.com');
+    expect(noAdult.error?.message).toMatch(/Au moins 1 adulte/);
+  });
+});
+
 describe('Check-in / Check-out', () => {
   let reservationId: string;
   let roomId: string;
