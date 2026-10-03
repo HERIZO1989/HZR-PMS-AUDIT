@@ -531,6 +531,99 @@ describe('TASK 18 — Night audit : posting des nuitees', () => {
   });
 });
 
+describe('TASK 19 — TVA sur les nuitees postees', () => {
+  let reservationId: string;
+  let folioId: string;
+  let gross: number;
+
+  beforeAll(async () => {
+    // Chambre libre : ni les chambres A/B, ni celle du bloc TASK 18 (deja en sejour)
+    const { data: busy } = await supabase.from('reservations').select('assigned_room_id').eq('hotel_id', hotelId).eq('status', 'checked_in');
+    const excluded = [roomAId, roomBId, ...(busy ?? []).map((b) => b.assigned_room_id).filter(Boolean)];
+    const { data: rooms } = await supabase.from('rooms').select('id, room_type_id').eq('hotel_id', hotelId);
+    const spare = (rooms ?? []).find((r) => !excluded.includes(r.id));
+    expect(spare).toBeDefined();
+
+    const { data: res, error } = await supabase.rpc('create_reservation', {
+      p_tenant_id: tenantId, p_hotel_id: hotelId, p_room_type_id: spare!.room_type_id,
+      p_arrival_date: '2032-03-01', p_departure_date: '2032-03-04', p_assigned_room_id: spare!.id,
+      p_guest_email: 'vitest.t19@example.com', p_guest_first_name: 'Vat', p_guest_last_name: 'Test',
+    });
+    expect(error).toBeNull();
+    reservationId = res.id;
+    gross = Number(res.total_amount) / 3;
+    const ci = await supabase.rpc('check_in_reservation', { p_reservation_id: reservationId, p_hotel_id: hotelId });
+    expect(ci.error).toBeNull();
+    const { data: folio } = await supabase.from('folios').select('id').eq('reservation_id', reservationId).single();
+    folioId = folio!.id;
+  });
+
+  const post = (date: string) => supabase.rpc('post_room_charges', { p_hotel_id: hotelId, p_business_date: date });
+  const setVat = (vat_rate: number, prices_include_vat: boolean) =>
+    supabase.from('hotels').update({ vat_rate, prices_include_vat }).eq('id', hotelId);
+
+  it('prix TTC : ligne chambre HT + ligne TVA, solde = TTC, ADR hors TVA', async () => {
+    await setVat(0.2, true);
+    try {
+      const { data, error } = await post('2032-03-01');
+      expect(error).toBeNull();
+      expect(data[0].posted).toBe(1);
+      expect(Number(data[0].total_posted)).toBeCloseTo(gross, 2);
+
+      const { data: lines } = await supabase.from('folio_lines').select('line_type, amount').eq('folio_id', folioId);
+      const room = lines!.find((l) => l.line_type === 'room_charge')!;
+      const tax = lines!.find((l) => l.line_type === 'tax')!;
+      expect(Number(room.amount)).toBeCloseTo(gross / 1.2, 2);
+      expect(Number(room.amount) + Number(tax.amount)).toBeCloseTo(gross, 2);
+
+      const { data: folio } = await supabase.from('folios').select('balance').eq('id', folioId).single();
+      expect(Number(folio!.balance)).toBeCloseTo(gross, 2);
+
+      const { data: kpi } = await supabase.from('kpi_daily_snapshots').select('adr').eq('hotel_id', hotelId).eq('business_date', '2032-03-01').single();
+      expect(Number(kpi!.adr)).toBeCloseTo(gross / 1.2, 2);
+    } finally {
+      await setVat(0, true);
+    }
+  });
+
+  it('idempotent : relancer ne duplique ni la nuitee ni la TVA', async () => {
+    await setVat(0.2, true);
+    try {
+      const { data } = await post('2032-03-01');
+      expect(data[0].posted).toBe(0);
+      expect(data[0].skipped).toBe(1);
+      const { data: lines } = await supabase.from('folio_lines').select('line_type').eq('folio_id', folioId);
+      expect(lines!.filter((l) => l.line_type === 'room_charge')).toHaveLength(1);
+      expect(lines!.filter((l) => l.line_type === 'tax')).toHaveLength(1);
+    } finally {
+      await setVat(0, true);
+    }
+  });
+
+  it('prix HT : la TVA s ajoute au tarif', async () => {
+    await setVat(0.2, false);
+    try {
+      const { data, error } = await post('2032-03-02');
+      expect(error).toBeNull();
+      expect(Number(data[0].total_posted)).toBeCloseTo(gross * 1.2, 2);
+      const { data: line } = await supabase
+        .from('folio_lines').select('amount').eq('folio_id', folioId).eq('line_type', 'room_charge').eq('reference', 'NIGHT:2032-03-02').single();
+      expect(Number(line!.amount)).toBeCloseTo(gross, 2);
+    } finally {
+      await setVat(0, true);
+    }
+  });
+
+  it('TVA a 0 : aucune ligne de taxe', async () => {
+    await setVat(0, true);
+    const { data } = await post('2032-03-03');
+    expect(data[0].posted).toBe(1);
+    const { count } = await supabase
+      .from('folio_lines').select('id', { count: 'exact', head: true }).eq('folio_id', folioId).eq('line_type', 'tax').eq('reference', 'NIGHT:2032-03-03');
+    expect(count).toBe(0);
+  });
+});
+
 describe('Folio et paiement', () => {
   let reservationId: string;
   let folioId: string;
