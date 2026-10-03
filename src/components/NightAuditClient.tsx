@@ -71,7 +71,7 @@ export function NightAuditClient({ hotelId }: { hotelId: string }) {
       } else {
         const r = data.result;
         setPostMessage(
-          `${r.posted} nuitée(s) postée(s), ${r.skipped} déjà postée(s) — total ${Number(r.total_posted).toLocaleString('fr-FR')} ${r.currency_code}`
+          `${r.posted} nuitée(s) postée(s), ${r.skipped} déjà postée(s) — total TTC ${Number(r.total_posted).toLocaleString('fr-FR')} ${r.currency_code}`
         );
       }
     } catch {
