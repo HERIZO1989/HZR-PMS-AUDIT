@@ -31,6 +31,9 @@ export function NightAuditClient({ hotelId }: { hotelId: string }) {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [posting, setPosting] = useState(false);
+  const [businessDate, setBusinessDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+  const [postMessage, setPostMessage] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -53,6 +56,32 @@ export function NightAuditClient({ hotelId }: { hotelId: string }) {
     load();
   }
 
+  async function postRoomCharges() {
+    setPosting(true);
+    setPostMessage(null);
+    try {
+      const res = await fetch('/api/night-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hotelId, action: 'post_room_charges', businessDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPostMessage(data.error ?? 'Échec du posting des nuitées');
+      } else {
+        const r = data.result;
+        setPostMessage(
+          `${r.posted} nuitée(s) postée(s), ${r.skipped} déjà postée(s) — total ${Number(r.total_posted).toLocaleString('fr-FR')} ${r.currency_code}`
+        );
+      }
+    } catch {
+      setPostMessage('Erreur réseau pendant le posting des nuitées');
+    } finally {
+      setPosting(false);
+      load();
+    }
+  }
+
   if (loading) return <div className="text-ink-400">Chargement…</div>;
 
   return (
@@ -70,6 +99,30 @@ export function NightAuditClient({ hotelId }: { hotelId: string }) {
           {running ? 'Audit en cours…' : "Lancer l'audit des KPI"}
         </button>
       </header>
+
+      <section className="mb-8 border border-ink-600 p-4">
+        <h2 className="text-sm text-parchment">Poster les nuitées</h2>
+        <p className="mt-1 text-xs text-ink-400">
+          Ajoute la nuitée du jour d&apos;exploitation sur le folio de chaque client en séjour (tarif du calendrier).
+          Relancer la même date ne crée aucun doublon.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <input
+            type="date"
+            value={businessDate}
+            onChange={(e) => setBusinessDate(e.target.value)}
+            className="border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-parchment focus:border-brass focus:outline-none"
+          />
+          <button
+            onClick={postRoomCharges}
+            disabled={posting || !businessDate}
+            className="border border-brass-dim px-4 py-2 text-sm text-brass-light hover:border-brass hover:text-brass disabled:opacity-50"
+          >
+            {posting ? 'Posting en cours…' : 'Poster les nuitées'}
+          </button>
+        </div>
+        {postMessage && <p className="mt-3 text-sm text-parchment">{postMessage}</p>}
+      </section>
 
       <ul className="flex flex-col gap-6">
         {runs.map((run) => (

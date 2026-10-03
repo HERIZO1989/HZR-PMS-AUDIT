@@ -34,12 +34,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Permission "night_audit.run" requise' }, { status: 403 });
   }
 
-  const { hotelId } = await req.json();
+  const { hotelId, action, businessDate } = await req.json();
   if (!hotelId || hotelId !== session!.hotelId) {
     return NextResponse.json({ error: 'hotelId invalide' }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
+
+  // Poste les nuitees (charges chambre) des clients en sejour pour une date d'exploitation.
+  // Idempotent : relancer la meme date ne cree aucun doublon.
+  if (action === 'post_room_charges') {
+    if (typeof businessDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(businessDate) || Number.isNaN(Date.parse(businessDate))) {
+      return NextResponse.json({ error: 'businessDate invalide (format AAAA-MM-JJ)' }, { status: 400 });
+    }
+    const dayMs = 86400000;
+    const delta = (Date.parse(businessDate) - Date.parse(new Date().toISOString().slice(0, 10))) / dayMs;
+    if (delta > 1 || delta < -31) {
+      return NextResponse.json({ error: 'businessDate hors plage (31 jours passes, lendemain au plus)' }, { status: 400 });
+    }
+    const { data, error } = await supabase.rpc('post_room_charges', {
+      p_hotel_id: hotelId,
+      p_business_date: businessDate,
+      p_staff_user_id: session!.staffUserId,
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ result: data?.[0] ?? null });
+  }
+
   const { data, error } = await supabase.rpc('run_hotel_audit', {
     p_hotel_id: hotelId,
     p_start_date: new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10),

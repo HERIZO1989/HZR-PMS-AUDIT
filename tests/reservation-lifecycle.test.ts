@@ -81,6 +81,7 @@ afterAll(async () => {
   await supabase.from('import_batches').delete().eq('hotel_id', hotelId);
   await supabase.from('concierge_requests').delete().eq('hotel_id', hotelId);
   await supabase.from('audit_findings').delete().eq('hotel_id', hotelId);
+  await supabase.from('kpi_daily_snapshots').delete().eq('hotel_id', hotelId);
   await supabase.from('night_audit_checks').delete().eq('tenant_id', tenantId);
   await supabase.from('night_audit_runs').delete().eq('hotel_id', hotelId);
   const { data: staff } = await supabase.from('staff_users').select('id').eq('tenant_id', tenantId);
@@ -448,6 +449,85 @@ describe('Check-in / Check-out', () => {
 
     const { data: tasks } = await supabase.from('housekeeping_tasks').select('task_type,status').eq('room_id', roomId);
     expect(tasks!.some((t) => t.task_type === 'turnover' && t.status === 'pending')).toBe(true);
+  });
+});
+
+describe('TASK 18 — Night audit : posting des nuitees', () => {
+  let reservationId: string;
+  let folioId: string;
+  let nightly: number;
+  let totalAmount: number;
+
+  beforeAll(async () => {
+    // Chambre dediee, distincte de celles utilisees par les autres blocs de tests
+    const { data: spare } = await supabase
+      .from('rooms')
+      .select('id, room_type_id')
+      .eq('hotel_id', hotelId)
+      .neq('id', roomAId)
+      .neq('id', roomBId)
+      .limit(1)
+      .single();
+    expect(spare).not.toBeNull();
+
+    const { data: res, error } = await supabase.rpc('create_reservation', {
+      p_tenant_id: tenantId, p_hotel_id: hotelId, p_room_type_id: spare!.room_type_id,
+      p_arrival_date: '2031-07-01', p_departure_date: '2031-07-03', p_assigned_room_id: spare!.id,
+      p_guest_email: 'vitest.t18@example.com', p_guest_first_name: 'Night', p_guest_last_name: 'Audit',
+    });
+    expect(error).toBeNull();
+    reservationId = res.id;
+    totalAmount = Number(res.total_amount);
+    nightly = totalAmount / 2;
+
+    const ci = await supabase.rpc('check_in_reservation', { p_reservation_id: reservationId, p_hotel_id: hotelId });
+    expect(ci.error).toBeNull();
+    const { data: folio } = await supabase.from('folios').select('id').eq('reservation_id', reservationId).single();
+    folioId = folio!.id;
+  });
+
+  const post = (date: string) => supabase.rpc('post_room_charges', { p_hotel_id: hotelId, p_business_date: date });
+
+  it('poste la nuitee du client en sejour et met a jour le solde du folio', async () => {
+    const { data, error } = await post('2031-07-01');
+    expect(error).toBeNull();
+    expect(data[0].posted).toBe(1);
+    expect(Number(data[0].total_posted)).toBe(nightly);
+    const { data: folio } = await supabase.from('folios').select('balance').eq('id', folioId).single();
+    expect(Number(folio!.balance)).toBe(nightly);
+  });
+
+  it('est idempotent : relancer la meme date ne cree aucun doublon', async () => {
+    const { data, error } = await post('2031-07-01');
+    expect(error).toBeNull();
+    expect(data[0].posted).toBe(0);
+    expect(data[0].skipped).toBe(1);
+    const { count } = await supabase
+      .from('folio_lines')
+      .select('id', { count: 'exact', head: true })
+      .eq('folio_id', folioId)
+      .eq('line_type', 'room_charge');
+    expect(count).toBe(1);
+  });
+
+  it("alimente l'ADR et le CA chambres du jour", async () => {
+    const { data: kpi } = await supabase
+      .from('kpi_daily_snapshots')
+      .select('adr, total_room_revenue')
+      .eq('hotel_id', hotelId)
+      .eq('business_date', '2031-07-01')
+      .single();
+    expect(Number(kpi!.total_room_revenue)).toBe(nightly);
+    expect(Number(kpi!.adr)).toBe(nightly);
+  });
+
+  it('poste la 2e nuit, rien le jour du depart', async () => {
+    const second = await post('2031-07-02');
+    expect(second.data[0].posted).toBe(1);
+    const departure = await post('2031-07-03');
+    expect(departure.data[0].posted).toBe(0);
+    const { data: folio } = await supabase.from('folios').select('balance').eq('id', folioId).single();
+    expect(Number(folio!.balance)).toBe(totalAmount);
   });
 });
 
