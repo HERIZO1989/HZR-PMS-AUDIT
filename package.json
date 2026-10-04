@@ -13,12 +13,13 @@
     "jose": "^5.9.6",
     "next": "14.2.35",
     "papaparse": "^5.4.1",
-    "recharts": "^2.12.7",
-    "stripe": "^16.9.0",
+    "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "xlsx": "^0.18.5",
-    "resend": "^4.0.1"
+    "recharts": "^2.12.7",
+    "resend": "^4.0.1",
+    "stripe": "^16.9.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
@@ -26,10 +27,10 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.19",
+    "dotenv": "^16.4.5",
     "postcss": "^8.4.39",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.5.4",
-    "vitest": "^2.1.1",
-    "dotenv": "^16.4.5"
+    "vitest": "^2.1.1"
   }
 }
