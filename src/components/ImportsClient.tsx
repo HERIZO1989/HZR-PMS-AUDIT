@@ -77,6 +77,7 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
             <option value="generic_csv">Fichier générique</option>
             <option value="opera">Export Opera</option>
             <option value="protel">Export Protel</option>
+            <option value="odoo">Export Odoo</option>
           </select>
           <select
             value={targetEntityType}

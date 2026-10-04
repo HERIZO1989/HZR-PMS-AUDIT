@@ -1,5 +1,5 @@
 export type SourceFileType = 'csv' | 'txt' | 'xlsx' | 'xls';
-export type SourceSystem = 'opera' | 'protel' | 'fidelio' | 'generic_csv' | 'generic_xlsx' | 'generic_txt';
+export type SourceSystem = 'opera' | 'protel' | 'odoo' | 'fidelio' | 'generic_csv' | 'generic_xlsx' | 'generic_txt';
 export type TargetEntityType = 'guest' | 'reservation';
 
 export interface RawRow {
