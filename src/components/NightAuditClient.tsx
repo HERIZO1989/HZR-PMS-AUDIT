@@ -122,6 +122,14 @@ export function NightAuditClient({ hotelId }: { hotelId: string }) {
           </button>
         </div>
         {postMessage && <p className="mt-3 text-sm text-parchment">{postMessage}</p>}
+        <a
+          href={`/api/night-audit/report?hotelId=${hotelId}&date=${businessDate}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-block border border-ink-600 px-4 py-2 text-sm text-parchment hover:border-brass hover:text-brass"
+        >
+          Rapport PDF de cette date
+        </a>
       </section>
 
       <ul className="flex flex-col gap-6">
