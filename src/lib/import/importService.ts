@@ -35,7 +35,13 @@ export class ImportService {
 
   resolveMapping(headers: string[], sourceSystem: SourceSystem, targetEntityType: TargetEntityType): MappingConfig {
     const preset = MAPPING_PRESETS[sourceSystem];
-    if (preset && preset.targetEntityType === targetEntityType) return preset;
+    if (preset && preset.targetEntityType === targetEntityType) {
+      // Le preset n'est retenu que si tous ses en-tetes requis existent dans le fichier ;
+      // sinon (autre langue, colonnes renommees) on retombe sur la suggestion par synonymes.
+      const present = new Set(headers.map((h) => h.trim()));
+      const requiredOk = preset.fields.every((f) => !f.required || present.has(f.sourceField));
+      if (requiredOk) return preset;
+    }
     return suggestMapping(headers, targetEntityType);
   }
 
