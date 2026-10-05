@@ -16,6 +16,9 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+permissions:
+  contents: write   # uniquement pour deplacer le tag "deployed" apres un deploiement reussi
+
 jobs:
   deploy:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
@@ -27,7 +30,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 2
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Determiner si l'application a change
         id: changes
@@ -35,7 +39,15 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "Declenchement manuel : deploiement force"; exit 0
           fi
-          CHANGED=$(git diff --name-only HEAD~1 HEAD || true)
+          # Base de comparaison : dernier commit effectivement deploye (tag "deployed"), pour ne perdre aucun
+          # changement quand plusieurs merges sont pousses d'un coup ; repli sur le commit precedent.
+          if git rev-parse -q --verify refs/tags/deployed >/dev/null && git merge-base --is-ancestor deployed HEAD; then
+            BASE=deployed
+          else
+            BASE=HEAD~1
+          fi
+          echo "Base de comparaison : $BASE ($(git rev-parse --short $BASE))"
+          CHANGED=$(git diff --name-only $BASE HEAD || true)
           echo "Fichiers modifies :"; echo "$CHANGED"
           # Rien a deployer si seuls tests, documentation, workflows ou migrations SQL ont change
           if [ -z "$CHANGED" ] || ! echo "$CHANGED" | grep -qvE '^(tests/|\.github/|supabase/|.*\.md$)'; then
@@ -73,3 +85,9 @@ jobs:
             sleep 20
           done
           echo "::error::Le service n'est pas revenu en ligne apres le deploiement"; exit 1
+
+      - name: Marquer ce commit comme deploye
+        if: steps.changes.outputs.deploy == 'true' && github.event_name != 'workflow_dispatch'
+        run: |
+          git tag -f deployed HEAD
+          git push -f origin refs/tags/deployed
