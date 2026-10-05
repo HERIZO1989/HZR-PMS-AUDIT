@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SESSION_COOKIE, verifySessionToken, isSessionRevoked } from '@/lib/session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/billing/webhook', '/api/health'];
+// /api/cron/ : appels machine (GitHub Actions) sans cookie de session ; chaque route s'authentifie elle-meme par CRON_SECRET.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/billing/webhook', '/api/health', '/api/cron/'];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
