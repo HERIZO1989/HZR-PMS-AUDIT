@@ -6,6 +6,8 @@ export interface AlertHotelResult {
   newCritical: number;
   recipients: number;
   sent: boolean;
+  /** Hotel ignore sans erreur (ex. aucun destinataire joignable : hotel de demonstration). */
+  skipped?: string;
   error?: string;
 }
 
@@ -43,7 +45,11 @@ export async function runAuditAlerts(supabase: SupabaseClient, send: SendDigest)
       if (rec.error) throw new Error(`alert_recipients : ${rec.error.message}`);
       const to = ((rec.data ?? []) as { email: string }[]).map((x) => x.email);
       r.recipients = to.length;
-      if (to.length === 0) throw new Error('aucun destinataire OWNER/GM actif');
+      if (to.length === 0) {
+        r.skipped = 'aucun destinataire OWNER/GM joignable (adresses .local/.invalid/example exclues)';
+        results.push(r);
+        continue;
+      }
 
       const ok = await send({
         to,

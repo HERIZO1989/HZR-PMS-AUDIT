@@ -64,13 +64,14 @@ describe('Alertes critiques par e-mail', () => {
     expect(r[0].error).toMatch(/envoi/);
   });
 
-  it("signale l'absence de destinataire sans rien memoriser ni envoyer", async () => {
+  it("ignore sans erreur un hotel sans destinataire joignable (ex. demo), sans rien memoriser", async () => {
     const { client, upserts } = fakeClient({ hotels: [H1], fresh: { h1: [f(1)] }, recipients: { h1: [] } });
     const send = vi.fn();
     const r = await runAuditAlerts(client, send);
     expect(send).not.toHaveBeenCalled();
     expect(upserts).toHaveLength(0);
-    expect(r[0].error).toMatch(/destinataire/);
+    expect(r[0].error).toBeUndefined();
+    expect(r[0].skipped).toMatch(/destinataire/);
   });
 
   it("un hotel en erreur n'empeche pas les autres", async () => {
