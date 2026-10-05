@@ -160,27 +160,28 @@ export function buildCriticalAlertHtml(hotelName: string, items: CriticalAlertIt
     </div>`;
 }
 
-/** Envoie le digest. Retourne false (sans lever) si Resend est absent ou echoue : l'appelant ne marquera alors rien comme envoye. */
+/**
+ * Envoie le digest, un e-mail PAR destinataire : en mode sandbox Resend, un seul destinataire non autorise
+ * (hors adresse du compte proprietaire) ferait echouer toute la requete et personne ne serait prevenu.
+ * Retourne true si au moins un destinataire a ete servi ; l'appelant ne marque alors l'alerte comme envoyee que dans ce cas.
+ */
 export async function sendCriticalAlertDigest(params: { to: string[]; hotelName: string; items: CriticalAlertItem[] }): Promise<boolean> {
   const resend = getResendClient();
   if (!resend) {
     console.warn('[email] RESEND_API_KEY absente, alertes critiques non envoyees');
     return false;
   }
-  try {
-    const { error } = await resend.emails.send({
-      from: FROM_ADDRESS,
-      to: params.to,
-      subject: `[Alerte] ${params.items.length} anomalie(s) critique(s) — ${params.hotelName}`,
-      html: buildCriticalAlertHtml(params.hotelName, params.items),
-    });
-    if (error) {
-      console.error('[email] Échec envoi alertes critiques:', error);
-      return false;
+  const subject = `[Alerte] ${params.items.length} anomalie(s) critique(s) — ${params.hotelName}`;
+  const html = buildCriticalAlertHtml(params.hotelName, params.items);
+  let delivered = 0;
+  for (const to of params.to) {
+    try {
+      const { error } = await resend.emails.send({ from: FROM_ADDRESS, to: [to], subject, html });
+      if (error) console.error(`[email] Échec envoi alerte critique à ${to}:`, error);
+      else delivered += 1;
+    } catch (err) {
+      console.error(`[email] Exception envoi alerte critique à ${to}:`, err);
     }
-    return true;
-  } catch (err) {
-    console.error('[email] Exception envoi alertes critiques:', err);
-    return false;
   }
+  return delivered > 0;
 }
