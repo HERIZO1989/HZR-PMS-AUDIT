@@ -126,3 +126,61 @@ export async function sendPaymentReceipt(params: PaymentReceiptParams): Promise<
     return false;
   }
 }
+
+
+export interface CriticalAlertItem {
+  title: string;
+  description: string;
+  businessDate: string | null;
+  recommendation: string | null;
+}
+
+function escapeHtml(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Corps HTML du digest d'alertes critiques (contenu echappe : les descriptions viennent de donnees saisies). */
+export function buildCriticalAlertHtml(hotelName: string, items: CriticalAlertItem[]): string {
+  const rows = items
+    .map(
+      (i) => `
+        <div style="border-left: 4px solid #B32626; padding: 8px 12px; margin: 12px 0; background: #FBF3F3;">
+          <div style="font-weight: bold;">${escapeHtml(i.title)}${i.businessDate ? ` <span style="color:#5B6B79; font-weight: normal;">(${escapeHtml(i.businessDate)})</span>` : ''}</div>
+          <div style="margin-top: 4px;">${escapeHtml(i.description)}</div>
+          ${i.recommendation ? `<div style="margin-top: 4px; color: #5B6B79;">Action : ${escapeHtml(i.recommendation)}</div>` : ''}
+        </div>`
+    )
+    .join('');
+  return `
+    <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto;">
+      <h2 style="color: #B32626;">${items.length} anomalie(s) critique(s) — ${escapeHtml(hotelName)}</h2>
+      <p>L'audit automatique vient de détecter :</p>
+      ${rows}
+      <p style="color: #5B6B79; font-size: 12px;">Chaque anomalie n'est notifiée qu'une fois tant que sa situation ne change pas.</p>
+    </div>`;
+}
+
+/** Envoie le digest. Retourne false (sans lever) si Resend est absent ou echoue : l'appelant ne marquera alors rien comme envoye. */
+export async function sendCriticalAlertDigest(params: { to: string[]; hotelName: string; items: CriticalAlertItem[] }): Promise<boolean> {
+  const resend = getResendClient();
+  if (!resend) {
+    console.warn('[email] RESEND_API_KEY absente, alertes critiques non envoyees');
+    return false;
+  }
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_ADDRESS,
+      to: params.to,
+      subject: `[Alerte] ${params.items.length} anomalie(s) critique(s) — ${params.hotelName}`,
+      html: buildCriticalAlertHtml(params.hotelName, params.items),
+    });
+    if (error) {
+      console.error('[email] Échec envoi alertes critiques:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[email] Exception envoi alertes critiques:', err);
+    return false;
+  }
+}
