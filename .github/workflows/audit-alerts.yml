@@ -1,0 +1,28 @@
+name: Audit Alerts
+
+# Relance l'audit et envoie par e-mail les nouvelles anomalies critiques (OWNER/GM), toutes les 2 heures.
+# Prerequis : secrets GitHub APP_URL (ex. https://pms-riviera.onrender.com) et CRON_SECRET (meme valeur que la variable Render CRON_SECRET).
+# Tant que ces secrets ne sont pas definis, le workflow s'arrete proprement (avertissement, pas d'echec, donc pas d'e-mail GitHub).
+# Le service Render gratuit peut dormir : la premiere requete le reveille (d'ou le delai de 150 s).
+
+on:
+  schedule:
+    - cron: '20 */2 * * *'
+  workflow_dispatch:
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Lancer les alertes
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::warning::Secrets APP_URL / CRON_SECRET non definis (Settings > Secrets and variables > Actions) : alertes non lancees"
+            exit 0
+          fi
+          code=$(curl -s -m 150 -o /tmp/out.json -w '%{http_code}' -X POST -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/cron/audit-alerts")
+          echo "HTTP $code"; cat /tmp/out.json; echo
+          if [ "$code" != "200" ]; then echo "::error::Alertes en echec (HTTP $code)"; exit 1; fi
