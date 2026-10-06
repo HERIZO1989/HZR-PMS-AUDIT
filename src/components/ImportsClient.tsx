@@ -61,18 +61,18 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
   }
 
   return (
-    <div className="max-w-3xl">
-      <header className="mb-8">
-        <h1 className="font-display text-3xl text-parchment">Imports</h1>
-        <p className="mt-1 text-sm text-ink-400">CSV, TXT, Excel ou exports Opera / Protel</p>
+    <div className="max-w-4xl">
+      <header className="mb-6">
+        <h1 className="page-title">Imports</h1>
+        <p className="page-subtitle">CSV, TXT, Excel ou exports Opera, Protel et Odoo</p>
       </header>
 
-      <div className="mb-8 flex flex-col gap-4 border border-ink-700 p-5">
-        <div className="flex gap-4">
+      <div className="panel mb-6 flex flex-col gap-4 p-5">
+        <div className="grid gap-4 sm:grid-cols-2">
           <select
             value={sourceSystem}
             onChange={(e) => setSourceSystem(e.target.value)}
-            className="border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-parchment"
+            className="field"
           >
             <option value="generic_csv">Fichier générique</option>
             <option value="opera">Export Opera</option>
@@ -82,7 +82,7 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
           <select
             value={targetEntityType}
             onChange={(e) => setTargetEntityType(e.target.value as 'reservation' | 'guest')}
-            className="border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-parchment"
+            className="field"
           >
             <option value="reservation">Réservations</option>
             <option value="guest">Clients</option>
@@ -93,23 +93,23 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
           type="file"
           accept=".csv,.txt,.xlsx,.xls"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="text-sm text-ink-400"
+          className="field cursor-pointer file:mr-4 file:cursor-pointer file:rounded-sm file:border-0 file:bg-steel-tint file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-steel-dim"
         />
 
         <button
           onClick={handleStage}
           disabled={!file || staging}
-          className="w-fit border border-brass-dim px-4 py-2 text-sm text-brass-light hover:border-brass hover:text-brass disabled:opacity-50"
+          className="btn-primary w-fit"
         >
           {staging ? 'Analyse en cours…' : 'Analyser le fichier'}
         </button>
 
-        {error && <p className="text-sm text-wine">{error}</p>}
+        {error && <p role="alert" className="rounded-sm bg-wine-tint px-3 py-2 text-sm text-wine">{error}</p>}
       </div>
 
       {result && (
         <div>
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-ink-400">
               <span className="text-parchment">{result.totalRows}</span> lignes ·{' '}
               <span className="text-moss">{result.validRows} valides</span> ·{' '}
@@ -118,41 +118,43 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
             <button
               onClick={handleApply}
               disabled={applying || result.validRows === 0 || !!applySummary}
-              className="border border-brass-dim px-4 py-2 text-sm text-brass-light hover:border-brass hover:text-brass disabled:opacity-50"
+              className="btn-primary"
             >
               {applying ? 'Import en cours…' : `Importer les ${result.validRows} lignes valides`}
             </button>
           </div>
 
           {applySummary && (
-            <p className="mb-4 border border-moss px-4 py-3 text-sm text-moss">
+            <p role="status" className="mb-4 rounded-sm bg-moss-tint px-4 py-3 text-sm text-moss">
               {applySummary.imported} lignes importées, {applySummary.invalid} rejetées, {applySummary.skipped}{' '}
               ignorées.
             </p>
           )}
 
-          <table className="w-full border-collapse text-xs">
+          <div className="panel overflow-x-auto">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-ink-700 text-left text-ink-400">
-                <th className="py-2 pr-4 font-normal">Ligne</th>
-                <th className="py-2 pr-4 font-normal">Statut</th>
-                <th className="py-2 pr-4 font-normal">Détail</th>
+              <tr>
+                <th>Ligne</th>
+                <th>Statut</th>
+                <th>Détail</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-ink-700">
+            <tbody>
               {result.preview.map((row) => (
                 <tr key={row.rowNumber}>
-                  <td className="py-2 pr-4 tabular text-ink-400">{row.rowNumber}</td>
-                  <td className={`py-2 pr-4 ${row.status === 'valid' ? 'text-moss' : 'text-wine'}`}>
+                  <td className="tabular text-ink-400">{row.rowNumber}</td>
+                  <td className={`font-medium ${row.status === 'valid' ? 'text-moss' : 'text-wine'}`}>
                     {row.status === 'valid' ? 'Valide' : 'Invalide'}
                   </td>
-                  <td className="py-2 pr-4 text-ink-400">
+                  <td className="break-all text-xs text-ink-400">
                     {row.status === 'valid' ? JSON.stringify(row.normalized) : row.errors.join('; ')}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

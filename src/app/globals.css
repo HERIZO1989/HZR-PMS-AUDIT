@@ -7,8 +7,10 @@ html {
 }
 
 body {
-  background-color: #FFFFFF;
-  color: #152430;
+  background-color: #F3F5F8;
+  color: #14212B;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Chiffres alignes (KPI, montants) */
@@ -24,4 +26,77 @@ body {
 *:focus-visible {
   outline: 2px solid #0E6FA0;
   outline-offset: 2px;
+}
+
+@layer components {
+  /* Panneau : surface blanche, filet fin ; seul conteneur utilise pour regrouper du contenu */
+  .panel {
+    @apply rounded border border-ink-700 bg-ink-900 shadow-panel;
+  }
+
+  /* Titre de page */
+  .page-title {
+    @apply font-display text-[1.75rem] leading-tight tracking-tight text-parchment;
+  }
+  .page-subtitle {
+    @apply mt-1 text-sm text-ink-400;
+  }
+
+  /* Champs de saisie */
+  .field {
+    @apply w-full rounded border border-ink-600 bg-ink-900 px-3 py-2 text-sm text-parchment transition-colors placeholder:text-ink-500 focus:border-steel focus:outline-none focus:ring-2 focus:ring-steel/20 disabled:bg-ink-800 disabled:text-ink-500;
+  }
+  .field-label {
+    @apply mb-1.5 block text-xs font-medium text-ink-400;
+  }
+
+  /* Boutons : un seul plein par ecran (action principale), le reste en contour */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-steel text-white shadow-panel hover:bg-steel-dim;
+  }
+  .btn-secondary {
+    @apply btn border border-ink-600 bg-ink-900 text-parchment hover:border-steel hover:text-steel;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  /* Actions discretes dans les lignes de tableau */
+  .row-action {
+    @apply rounded px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50;
+  }
+
+  /* Tableaux de donnees : en-tete teinte, lignes aerees, survol discret */
+  .data-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .data-table thead th {
+    @apply whitespace-nowrap border-b border-ink-700 bg-ink-800 px-4 py-2.5 text-xs font-semibold text-ink-400;
+  }
+  /* :where() garde une specificite nulle : text-right / text-center sur un th l'emportent */
+  :where(.data-table thead th) {
+    text-align: left;
+  }
+  .data-table tbody td {
+    @apply border-b border-ink-700/70 px-4 py-3 align-middle;
+  }
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-steel-tint/40;
+  }
+  .data-table .num {
+    @apply tabular text-right;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
 }
