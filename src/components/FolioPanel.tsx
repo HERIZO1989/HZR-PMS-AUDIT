@@ -102,14 +102,17 @@ export function FolioPanel({ reservationId, onClose }: { reservationId: string; 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/50 p-4" onClick={onClose}>
       <div
-        className="max-h-[85vh] w-full max-w-lg overflow-y-auto border border-ink-700 bg-white p-6"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Folio"
+        className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-md border border-ink-700 bg-ink-900 p-6 shadow-pop"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-lg text-parchment">Folio</h2>
-          <button onClick={onClose} className="text-ink-400 hover:text-parchment">
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="font-display text-2xl tracking-tight text-parchment">Folio</h2>
+          <button onClick={onClose} className="btn-secondary btn-sm">
             Fermer
           </button>
         </div>
@@ -121,44 +124,48 @@ export function FolioPanel({ reservationId, onClose }: { reservationId: string; 
         ) : (
           <>
             <div className="mb-4 flex items-center justify-between border-b border-ink-700 pb-3">
-              <span className="text-sm text-ink-400">{folio.folio_number}</span>
-              <span className={`text-sm ${folio.status === 'closed' ? 'text-moss' : 'text-ochre'}`}>
+              <span className="tabular text-sm text-ink-400">{folio.folio_number}</span>
+              <span
+                className={`inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-medium ${
+                  folio.status === 'closed' ? 'bg-moss-tint text-moss' : 'bg-ochre-tint text-ochre'
+                }`}
+              >
                 {folio.status === 'closed' ? 'Soldé' : 'Ouvert'}
               </span>
             </div>
 
             <table className="mb-4 w-full text-sm">
-              <tbody className="divide-y divide-ink-700">
+              <tbody className="divide-y divide-ink-700/70">
                 {lines.map((l) => (
                   <tr key={l.id}>
-                    <td className="py-1.5 text-ink-400">{formatDate(l.posted_at)}</td>
-                    <td className="py-1.5">{l.description}</td>
-                    <td className="py-1.5 text-right tabular">{formatCurrency(l.amount * l.quantity, folio.currency_code)}</td>
+                    <td className="py-2 pr-3 text-ink-400">{formatDate(l.posted_at)}</td>
+                    <td className="py-2 pr-3">{l.description}</td>
+                    <td className="py-2 text-right tabular">{formatCurrency(l.amount * l.quantity, folio.currency_code)}</td>
                   </tr>
                 ))}
                 {payments.map((p) => (
                   <tr key={p.id}>
-                    <td className="py-1.5 text-ink-400">{formatDate(p.processed_at)}</td>
-                    <td className="py-1.5 text-moss">Paiement ({p.method})</td>
-                    <td className="py-1.5 text-right tabular text-moss">-{formatCurrency(p.amount, folio.currency_code)}</td>
+                    <td className="py-2 pr-3 text-ink-400">{formatDate(p.processed_at)}</td>
+                    <td className="py-2 pr-3 text-moss">Paiement ({p.method})</td>
+                    <td className="py-2 text-right tabular text-moss">-{formatCurrency(p.amount, folio.currency_code)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            <div className="mb-6 flex items-center justify-between border-t border-ink-700 pt-3">
+            <div className="mb-6 flex items-center justify-between rounded bg-ink-800 px-4 py-3">
               <span className="font-medium text-parchment">Solde</span>
-              <span className="tabular text-lg font-medium text-parchment">{formatCurrency(folio.balance, folio.currency_code)}</span>
+              <span className="tabular font-display text-2xl tracking-tight text-parchment">{formatCurrency(folio.balance, folio.currency_code)}</span>
             </div>
 
-            {error && <p className="mb-4 text-sm text-wine">{error}</p>}
+            {error && <p role="alert" className="mb-4 rounded-sm bg-wine-tint px-3 py-2 text-sm text-wine">{error}</p>}
 
             {folio.status === 'open' && (
               <div className="flex flex-col gap-4">
-                <div className="border border-ink-700 p-3">
-                  <div className="mb-2 text-xs text-ink-400">Ajouter une prestation</div>
-                  <div className="flex gap-2">
-                    <select value={lineType} onChange={(e) => setLineType(e.target.value)} className="border border-ink-600 bg-white px-2 py-1 text-sm">
+                <div className="rounded border border-ink-700 p-4">
+                  <div className="mb-3 text-sm font-semibold text-parchment">Ajouter une prestation</div>
+                  <div className="flex flex-wrap gap-2">
+                    <select value={lineType} onChange={(e) => setLineType(e.target.value)} className="field w-auto">
                       <option value="service">Service</option>
                       <option value="room_charge">Chambre</option>
                       <option value="tax">Taxe</option>
@@ -168,29 +175,29 @@ export function FolioPanel({ reservationId, onClose }: { reservationId: string; 
                       placeholder="Description"
                       value={lineDescription}
                       onChange={(e) => setLineDescription(e.target.value)}
-                      className="flex-1 border border-ink-600 bg-white px-2 py-1 text-sm"
+                      className="field min-w-[8rem] flex-1"
                     />
                     <input
                       type="number"
                       placeholder="Montant"
                       value={lineAmount}
                       onChange={(e) => setLineAmount(e.target.value)}
-                      className="w-24 border border-ink-600 bg-white px-2 py-1 text-sm"
+                      className="field w-28"
                     />
                     <button
                       onClick={handleAddLine}
                       disabled={addingLine}
-                      className="border border-brass-dim px-3 text-sm text-brass hover:bg-brass hover:text-white disabled:opacity-50"
+                      className="btn-secondary btn-sm"
                     >
-                      +
+                      Ajouter
                     </button>
                   </div>
                 </div>
 
-                <div className="border border-ink-700 p-3">
-                  <div className="mb-2 text-xs text-ink-400">Enregistrer un paiement</div>
-                  <div className="flex gap-2">
-                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="border border-ink-600 bg-white px-2 py-1 text-sm">
+                <div className="rounded border border-ink-700 p-4">
+                  <div className="mb-3 text-sm font-semibold text-parchment">Enregistrer un paiement</div>
+                  <div className="flex flex-wrap gap-2">
+                    <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="field w-auto">
                       <option value="card">Carte</option>
                       <option value="cash">Espèces</option>
                       <option value="bank_transfer">Virement</option>
@@ -200,12 +207,12 @@ export function FolioPanel({ reservationId, onClose }: { reservationId: string; 
                       placeholder="Montant"
                       value={paymentAmount}
                       onChange={(e) => setPaymentAmount(e.target.value)}
-                      className="flex-1 border border-ink-600 bg-white px-2 py-1 text-sm"
+                      className="field min-w-[8rem] flex-1"
                     />
                     <button
                       onClick={handlePayment}
                       disabled={payingNow}
-                      className="border border-brass-dim px-3 text-sm text-brass hover:bg-brass hover:text-white disabled:opacity-50"
+                      className="btn-primary btn-sm"
                     >
                       Encaisser
                     </button>

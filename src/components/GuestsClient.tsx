@@ -60,19 +60,19 @@ export function GuestsClient({ tenantId }: { tenantId: string }) {
 
   return (
     <div>
-      <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="font-display text-3xl text-parchment">Clients</h1>
-          <p className="mt-1 text-sm text-ink-400">{visible.length} profils</p>
+          <h1 className="page-title">Clients</h1>
+          <p className="page-subtitle">{visible.length} profils</p>
         </div>
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm text-ink-400">
-            <input type="checkbox" checked={showVipOnly} onChange={(e) => setShowVipOnly(e.target.checked)} />
+            <input type="checkbox" checked={showVipOnly} onChange={(e) => setShowVipOnly(e.target.checked)} className="h-4 w-4 rounded-sm border-ink-600 accent-[#0E6FA0]" />
             VIP uniquement
           </label>
           <button
             onClick={() => setShowForm((v) => !v)}
-            className="border border-brass-dim px-4 py-2 text-sm text-brass hover:bg-brass hover:text-white"
+            className="btn-primary"
           >
             {showForm ? 'Fermer' : 'Nouveau client'}
           </button>
@@ -80,39 +80,39 @@ export function GuestsClient({ tenantId }: { tenantId: string }) {
       </header>
 
       {showForm && (
-        <div className="mb-8 border border-ink-700 p-5">
+        <div className="panel mb-6 p-5">
           <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <input placeholder="Prénom" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="border border-ink-600 bg-white px-2 py-1.5 text-sm" />
-            <input placeholder="Nom" value={lastName} onChange={(e) => setLastName(e.target.value)} className="border border-ink-600 bg-white px-2 py-1.5 text-sm" />
-            <input placeholder="Email (optionnel)" value={email} onChange={(e) => setEmail(e.target.value)} className="border border-ink-600 bg-white px-2 py-1.5 text-sm" />
-            <input placeholder="Téléphone (optionnel)" value={phone} onChange={(e) => setPhone(e.target.value)} className="border border-ink-600 bg-white px-2 py-1.5 text-sm" />
+            <input placeholder="Prénom" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="field" />
+            <input placeholder="Nom" value={lastName} onChange={(e) => setLastName(e.target.value)} className="field" />
+            <input placeholder="Email (optionnel)" value={email} onChange={(e) => setEmail(e.target.value)} className="field" />
+            <input placeholder="Téléphone (optionnel)" value={phone} onChange={(e) => setPhone(e.target.value)} className="field" />
           </div>
           {createError && <p className="mb-3 text-sm text-wine">{createError}</p>}
           <button
             onClick={handleCreate}
             disabled={creating || !firstName || !lastName}
-            className="border border-brass-dim px-4 py-1.5 text-sm text-brass hover:bg-brass hover:text-white disabled:opacity-50"
+            className="btn-primary"
           >
             {creating ? 'Création…' : 'Créer le client'}
           </button>
         </div>
       )}
 
-      <ul className="divide-y divide-ink-700 border-y border-ink-700">
+      <ul className="panel divide-y divide-ink-700">
         {visible.map((g) => (
-          <li key={g.id} className="flex flex-col gap-1 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <li key={g.id} className="flex flex-col gap-1 px-5 py-4 transition-colors hover:bg-steel-tint/40 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-3">
-                <span className="text-parchment">
+                <span className="font-medium text-parchment">
                   {g.first_name} {g.last_name}
                 </span>
                 {g.vip_tier !== 'none' && (
-                  <span className="border border-brass-dim px-2 py-0.5 text-xs text-brass-light">
+                  <span className="rounded-sm bg-brass-tint px-2 py-0.5 text-xs font-medium text-[#7A5F2B]">
                     {VIP_LABELS[g.vip_tier]}
                   </span>
                 )}
                 {g.is_blacklisted && (
-                  <span className="border border-wine px-2 py-0.5 text-xs text-wine">Liste noire</span>
+                  <span className="rounded-sm bg-wine-tint px-2 py-0.5 text-xs font-medium text-wine">Liste noire</span>
                 )}
               </div>
               <div className="mt-1 text-sm text-ink-400">

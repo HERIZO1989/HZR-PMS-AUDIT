@@ -19,12 +19,20 @@ interface SeriesPoint {
 }
 
 const COLORS = {
-  occupancy: '#0E6FA0', // brass (bleu-petrole)
-  adr: '#2F7D4F', // moss
-  revpar: '#C0392B', // wine
-  grid: '#E2E8EE', // ink-700
-  axis: '#5B6B79', // ink-400
+  occupancy: '#0E6FA0', // steel (bleu-petrole)
+  adr: '#2A7248', // moss
+  revpar: '#B3362B', // wine
+  grid: '#DCE2E9', // ink-700
+  axis: '#566574', // ink-400
 };
+
+/** 148 200 -> "148 k", 1 250 000 -> "1,3 M" : evite les etiquettes d'axe tronquees avec les grandes monnaies. */
+function formatAxisMoney(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `${(v / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M`;
+  if (abs >= 1_000) return `${Math.round(v / 1_000).toLocaleString('fr-FR')} k`;
+  return String(Math.round(v));
+}
 
 function formatDateShort(iso: string): string {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(new Date(iso));
@@ -33,7 +41,7 @@ function formatDateShort(iso: string): string {
 function CustomTooltip({ active, payload, label, currencySymbol }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="border border-ink-600 bg-ink-800 px-3 py-2 text-xs">
+    <div className="rounded border border-ink-700 bg-ink-900 px-3 py-2 text-xs shadow-pop">
       <div className="mb-1 text-ink-400">{formatDateShort(label)}</div>
       {payload.map((entry: any) => (
         <div key={entry.dataKey} style={{ color: entry.color }} className="tabular">
@@ -59,7 +67,7 @@ export function KpiTrendChart({
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: -12 }}>
+        <LineChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={COLORS.grid} vertical={false} />
           <XAxis
             dataKey="business_date"
@@ -75,8 +83,8 @@ export function KpiTrendChart({
             tick={{ fontSize: 11, fill: COLORS.axis }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(v) => (metric === 'occupancy' ? `${Math.round(v * 100)}%` : `${Math.round(v)}${currencySymbol}`)}
-            width={48}
+            tickFormatter={(v) => (metric === 'occupancy' ? `${Math.round(v * 100)} %` : formatAxisMoney(v))}
+            width={52}
           />
           <Tooltip content={<CustomTooltip currencySymbol={currencySymbol} />} />
           {metric === 'occupancy' ? (
@@ -85,7 +93,7 @@ export function KpiTrendChart({
               dataKey="occupancy_rate"
               name="Occupation"
               stroke={COLORS.occupancy}
-              strokeWidth={1.5}
+              strokeWidth={2}
               dot={false}
               activeDot={{ r: 3 }}
             />
@@ -96,7 +104,7 @@ export function KpiTrendChart({
                 dataKey="adr"
                 name="ADR"
                 stroke={COLORS.adr}
-                strokeWidth={1.5}
+                strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 3 }}
               />
@@ -105,7 +113,7 @@ export function KpiTrendChart({
                 dataKey="revpar"
                 name="RevPAR"
                 stroke={COLORS.revpar}
-                strokeWidth={1.5}
+                strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 3 }}
               />

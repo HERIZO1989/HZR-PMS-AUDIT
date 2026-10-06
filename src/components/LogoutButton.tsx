@@ -12,7 +12,10 @@ export function LogoutButton() {
   }
 
   return (
-    <button onClick={handleLogout} className="text-ink-400 hover:text-brass-light">
+    <button
+      onClick={handleLogout}
+      className="rounded border border-white/20 px-3 py-1.5 text-xs text-white/80 transition-colors hover:border-white/50 hover:text-white"
+    >
       Se déconnecter
     </button>
   );

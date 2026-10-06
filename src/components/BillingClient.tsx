@@ -20,12 +20,12 @@ interface Subscription {
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  trialing: { label: 'Essai en cours', className: 'text-brass-light' },
-  active: { label: 'Actif', className: 'text-moss' },
-  past_due: { label: 'Paiement en retard', className: 'text-ochre' },
-  canceled: { label: 'Résilié', className: 'text-wine' },
-  incomplete: { label: 'Incomplet', className: 'text-ochre' },
-  unpaid: { label: 'Impayé', className: 'text-wine' },
+  trialing: { label: 'Essai en cours', className: 'bg-steel-tint text-steel-dim' },
+  active: { label: 'Actif', className: 'bg-moss-tint text-moss' },
+  past_due: { label: 'Paiement en retard', className: 'bg-ochre-tint text-ochre' },
+  canceled: { label: 'Résilié', className: 'bg-wine-tint text-wine' },
+  incomplete: { label: 'Incomplet', className: 'bg-ochre-tint text-ochre' },
+  unpaid: { label: 'Impayé', className: 'bg-wine-tint text-wine' },
 };
 
 function formatPrice(cents: number | null): string {
@@ -83,40 +83,42 @@ export function BillingClient({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <div className="max-w-4xl">
-      <header className="mb-8">
-        <h1 className="font-display text-3xl text-parchment">Facturation</h1>
-        <p className="mt-1 text-sm text-ink-400">Abonnement, usage et plans</p>
+      <header className="mb-6">
+        <h1 className="page-title">Facturation</h1>
+        <p className="page-subtitle">Abonnement, usage et plans</p>
       </header>
 
-      {error && <p className="mb-6 border border-wine px-4 py-3 text-sm text-wine">{error}</p>}
+      {error && <p role="alert" className="mb-6 rounded-sm bg-wine-tint px-4 py-3 text-sm text-wine">{error}</p>}
 
       {subscription && currentPlan && (
-        <section className="mb-10 border border-ink-700 p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <span className="font-display text-xl text-parchment">{currentPlan.name}</span>
-              {status && <span className={`ml-3 text-sm ${status.className}`}>{status.label}</span>}
+        <section className="panel mb-6 p-5">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="font-display text-2xl tracking-tight text-parchment">{currentPlan.name}</span>
+              {status && (
+                <span className={`rounded-sm px-2 py-0.5 text-xs font-medium ${status.className}`}>{status.label}</span>
+              )}
             </div>
             {isAdmin && (
               <button
                 onClick={handleManage}
-                className="border border-brass-dim px-3 py-1.5 text-sm text-brass-light hover:border-brass hover:text-brass"
+                className="btn-secondary btn-sm"
               >
                 Gérer l'abonnement
               </button>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-6 text-sm">
+          <div className="grid grid-cols-2 gap-6 border-t border-ink-700 pt-4 text-sm">
             <div>
               <div className="text-ink-400">Hôtels</div>
-              <div className="tabular text-parchment">
+              <div className="tabular mt-1 text-lg font-medium text-parchment">
                 {usage.hotels} / {currentPlan.max_hotels ?? '∞'}
               </div>
             </div>
             <div>
               <div className="text-ink-400">Chambres</div>
-              <div className="tabular text-parchment">
+              <div className="tabular mt-1 text-lg font-medium text-parchment">
                 {usage.rooms} / {currentPlan.max_rooms ?? '∞'}
               </div>
             </div>
@@ -132,22 +134,28 @@ export function BillingClient({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       <section>
-        <h2 className="mb-4 font-display text-xl text-parchment">Plans disponibles</h2>
-        <div className="grid grid-cols-3 divide-x divide-ink-700 border-y border-ink-700">
+        <h2 className="mb-4 text-base font-semibold text-parchment">Plans disponibles</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {plans.map((plan) => (
-            <div key={plan.code} className="flex flex-col px-5 py-6">
-              <div className="font-display text-lg text-parchment">{plan.name}</div>
-              <div className="tabular mt-1 text-2xl text-brass-light">{formatPrice(plan.price_monthly_cents)}</div>
+            <div
+              key={plan.code}
+              className={`panel flex flex-col p-5 ${plan.code === subscription?.plan_code ? 'border-t-2 border-t-brass' : ''}`}
+            >
+              <div className="text-base font-semibold text-parchment">{plan.name}</div>
+              <div className="tabular mt-1 font-display text-3xl tracking-tight text-parchment">{formatPrice(plan.price_monthly_cents)}</div>
               <ul className="mt-4 flex-1 space-y-1.5 text-sm text-ink-400">
                 {plan.features.map((f) => (
-                  <li key={f}>· {f}</li>
+                  <li key={f} className="flex gap-2">
+                    <span aria-hidden="true" className="mt-2 h-1 w-1 shrink-0 rounded-full bg-steel" />
+                    {f}
+                  </li>
                 ))}
               </ul>
               {isAdmin && plan.code !== subscription?.plan_code && (
                 <button
                   onClick={() => handleSubscribe(plan.code)}
                   disabled={busyPlan === plan.code}
-                  className="mt-6 border border-brass-dim py-2 text-sm text-brass-light hover:border-brass hover:text-brass disabled:opacity-50"
+                  className="btn-secondary mt-6 w-full"
                 >
                   {plan.price_monthly_cents === null
                     ? 'Nous contacter'
@@ -157,7 +165,7 @@ export function BillingClient({ isAdmin }: { isAdmin: boolean }) {
                 </button>
               )}
               {plan.code === subscription?.plan_code && (
-                <div className="mt-6 py-2 text-center text-sm text-moss">Plan actuel</div>
+                <div className="mt-6 rounded-sm bg-moss-tint py-2 text-center text-sm font-medium text-moss">Plan actuel</div>
               )}
             </div>
           ))}
