@@ -849,3 +849,53 @@ describe('TASK 4 — Housekeeping et déduplication import', () => {
     await supabase.from('guests').delete().eq('email', email);
   });
 });
+
+describe('TASK 32 — import de reservations sans e-mail, par tranches', () => {
+  it("rattache les reservations au meme client sans e-mail, traite par tranches et ignore un reimport", async () => {
+    const stamp = Date.now();
+    const first = `Vitest${stamp}`;
+    const last = 'SANSMAIL';
+    const numbers = [`VT-ODOO-${stamp}-1`, `VT-ODOO-${stamp}-2`];
+    const makeBatch = async () => {
+      const { data: batch } = await supabase
+        .from('import_batches')
+        .insert({ tenant_id: tenantId, hotel_id: hotelId, source_system: 'odoo', file_name: 'v.xlsx', file_type: 'xlsx', status: 'mapping' })
+        .select('id').single();
+      const rows = numbers.map((n, i) => ({
+        tenant_id: tenantId, import_batch_id: batch!.id, row_number: i + 1, raw_data: {},
+        normalized_data: { confirmation_number: n, guest_first_name: first, guest_last_name: last, arrival_date: '2031-03-01', departure_date: '2031-03-03', total_amount: 150000, currency_code: 'MGA', status: 'checked_out' },
+        status: 'valid', target_entity_type: 'reservation',
+      }));
+      rows.push({ tenant_id: tenantId, import_batch_id: batch!.id, row_number: 3, raw_data: {}, normalized_data: null as any, status: 'skipped', target_entity_type: 'reservation' } as any);
+      await supabase.from('import_rows').insert(rows);
+      return batch!.id as string;
+    };
+
+    const b1 = await makeBatch();
+    const c1 = await supabase.rpc('apply_import_batch_chunk', { p_batch_id: b1, p_limit: 1 });
+    expect(c1.error).toBeNull();
+    expect(c1.data[0]).toMatchObject({ processed: 1, remaining: 1 });
+    const c2 = await supabase.rpc('apply_import_batch_chunk', { p_batch_id: b1, p_limit: 1 });
+    expect(c2.data[0]).toMatchObject({ processed: 1, remaining: 0, imported: 2, invalid: 0, skipped: 1 });
+
+    const { data: guests } = await supabase.from('guests').select('id, email').eq('tenant_id', tenantId).eq('first_name', first).eq('last_name', last);
+    expect(guests).toHaveLength(1);
+    expect(guests![0].email).toBeNull();
+    const { data: resas } = await supabase.from('reservations').select('confirmation_number, guest_id, status').eq('hotel_id', hotelId).in('confirmation_number', numbers);
+    expect(resas).toHaveLength(2);
+    expect(new Set(resas!.map((r) => r.guest_id))).toEqual(new Set([guests![0].id]));
+    expect(resas!.every((r) => r.status === 'checked_out')).toBe(true);
+
+    // Reimport du meme fichier : aucune reservation ni client en double.
+    const b2 = await makeBatch();
+    const again = await supabase.rpc('apply_import_batch_chunk', { p_batch_id: b2, p_limit: 500 });
+    expect(again.data[0]).toMatchObject({ remaining: 0, imported: 0, skipped: 3 });
+    const { count: guestCount } = await supabase.from('guests').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('first_name', first).eq('last_name', last);
+    expect(guestCount).toBe(1);
+
+    await supabase.from('reservations').delete().eq('hotel_id', hotelId).in('confirmation_number', numbers);
+    await supabase.from('import_rows').delete().in('import_batch_id', [b1, b2]);
+    await supabase.from('import_batches').delete().in('id', [b1, b2]);
+    await supabase.from('guests').delete().eq('tenant_id', tenantId).eq('first_name', first);
+  });
+});

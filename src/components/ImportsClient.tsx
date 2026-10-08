@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 interface PreviewRow {
   rowNumber: number;
-  status: 'valid' | 'invalid';
+  status: 'valid' | 'invalid' | 'skipped';
   errors: string[];
   normalized: Record<string, unknown> | null;
 }
@@ -14,6 +14,7 @@ interface StageResult {
   totalRows: number;
   validRows: number;
   invalidRows: number;
+  skippedRows?: number;
   preview: PreviewRow[];
 }
 
@@ -114,6 +115,12 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
               <span className="text-parchment">{result.totalRows}</span> lignes ·{' '}
               <span className="text-moss">{result.validRows} valides</span> ·{' '}
               <span className="text-wine">{result.invalidRows} invalides</span>
+              {!!result.skippedRows && (
+                <>
+                  {' '}·{' '}
+                  <span>{result.skippedRows} ignorées</span>
+                </>
+              )}
             </div>
             <button
               onClick={handleApply}
@@ -144,8 +151,8 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
               {result.preview.map((row) => (
                 <tr key={row.rowNumber}>
                   <td className="tabular text-ink-400">{row.rowNumber}</td>
-                  <td className={`font-medium ${row.status === 'valid' ? 'text-moss' : 'text-wine'}`}>
-                    {row.status === 'valid' ? 'Valide' : 'Invalide'}
+                  <td className={`font-medium ${row.status === 'valid' ? 'text-moss' : row.status === 'skipped' ? 'text-ink-400' : 'text-wine'}`}>
+                    {row.status === 'valid' ? 'Valide' : row.status === 'skipped' ? 'Ignorée' : 'Invalide'}
                   </td>
                   <td className="break-all text-xs text-ink-400">
                     {row.status === 'valid' ? JSON.stringify(row.normalized) : row.errors.join('; ')}
