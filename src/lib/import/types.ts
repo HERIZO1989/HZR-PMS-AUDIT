@@ -22,13 +22,24 @@ export interface MappingConfig {
   fields: FieldMapping[];
   /** e.g. 'DD/MM/YYYY', 'MM-DD-YYYY', 'YYYY-MM-DD' — used by the date normalizer */
   dateFormat?: string;
+  /** Correspondance des valeurs de statut du fichier vers celles du PMS (cles sans accents ni casse, voir normalizeKey). */
+  statusMap?: Record<string, string>;
+  /** Specificites d'un export (voir odoo.ts). */
+  options?: {
+    /** Ignore les lignes de regroupement (ex. "checkout (4219)") au lieu de les signaler invalides. */
+    skipGroupRows?: boolean;
+    /** Remplace la reference source (reutilisee) par un numero de confirmation unique et reproductible. */
+    uniqueConfirmationNumber?: boolean;
+    /** Separe un nom unique "NOM Prenom" en nom / prenom. */
+    splitNameLastFirst?: boolean;
+  };
 }
 
 export interface NormalizedRowResult {
   rowNumber: number;
   raw: Record<string, unknown>;
   normalized: Record<string, unknown> | null;
-  status: 'valid' | 'invalid';
+  status: 'valid' | 'invalid' | 'skipped';
   errors: string[];
 }
 
@@ -39,7 +50,7 @@ export interface NormalizedRowResult {
  *   first_name*, last_name*, email, phone, nationality, vip_tier, loyalty_number
  *
  * reservation:
- *   confirmation_number*, guest_email*, guest_first_name, guest_last_name,
+ *   confirmation_number*, guest_email (ou guest_first_name / guest_last_name a defaut), guest_first_name, guest_last_name,
  *   channel, status, arrival_date* (YYYY-MM-DD), departure_date* (YYYY-MM-DD),
  *   adults, children, total_amount, currency_code
  *

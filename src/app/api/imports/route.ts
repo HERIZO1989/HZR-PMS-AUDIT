@@ -65,6 +65,7 @@ export async function POST(req: NextRequest) {
       totalRows: results.length,
       validRows: results.filter((r) => r.status === 'valid').length,
       invalidRows: results.filter((r) => r.status === 'invalid').length,
+      skippedRows: results.filter((r) => r.status === 'skipped').length,
       preview: results.slice(0, 15),
     });
   } catch (err: any) {

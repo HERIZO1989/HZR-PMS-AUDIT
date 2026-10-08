@@ -1,4 +1,5 @@
 import type { MappingConfig, SourceSystem } from './types';
+import { ODOO_STATUS_MAP } from './odoo';
 
 /**
  * Presets: known column headers used by common PMS export formats.
@@ -39,23 +40,21 @@ export const MAPPING_PRESETS: Record<SourceSystem, MappingConfig | null> = {
     ],
   },
   odoo: {
-    // Export Odoo (interface en francais) : dates "AAAA-MM-JJ HH:MM:SS" geres par le normaliseur ISO.
-    // En-tetes a confirmer sur un export reel d'Anjary ; si un en-tete requis manque, resolveMapping
-    // retombe automatiquement sur la suggestion par synonymes.
+    // Export Odoo reel d'Anjary (liste des reservations, interface francaise, groupee par statut).
+    // Pas d'e-mail ni d'adultes/enfants dans cet export : le client est identifie par son nom.
     targetEntityType: 'reservation',
     dateFormat: 'YYYY-MM-DD',
     fields: [
       { sourceField: 'Référence', targetField: 'confirmation_number', required: true },
-      { sourceField: 'Client', targetField: 'guest_full_name' },
-      { sourceField: 'Email', targetField: 'guest_email', required: true },
-      { sourceField: 'Arrivée', targetField: 'arrival_date', transform: 'date', required: true },
-      { sourceField: 'Départ', targetField: 'departure_date', transform: 'date', required: true },
-      { sourceField: 'Total', targetField: 'total_amount', transform: 'currency' },
-      { sourceField: 'Statut', targetField: 'status' },
-      { sourceField: 'Adultes', targetField: 'adults' },
-      { sourceField: 'Enfants', targetField: 'children' },
+      { sourceField: 'Nom du Client', targetField: 'guest_full_name', required: true },
+      { sourceField: "Date d'entrée", targetField: 'arrival_date', transform: 'date', required: true },
+      { sourceField: 'Date de sortie', targetField: 'departure_date', transform: 'date', required: true },
+      { sourceField: 'Montant total', targetField: 'total_amount', transform: 'currency' },
       { sourceField: 'Devise', targetField: 'currency_code' },
+      { sourceField: 'Status', targetField: 'status' },
     ],
+    statusMap: ODOO_STATUS_MAP,
+    options: { skipGroupRows: true, uniqueConfirmationNumber: true, splitNameLastFirst: true },
   },
   fidelio: null,
   generic_csv: null,
@@ -74,9 +73,9 @@ const SYNONYMS: Record<string, string[]> = {
   guest_email: ['email', 'guest email', 'e-mail', 'mail', 'courriel', 'client/email', 'client/courriel'],
   guest_first_name: ['first name', 'firstname', 'prenom', 'prénom'],
   guest_last_name: ['last name', 'lastname', 'nom', 'surname'],
-  arrival_date: ['arrival', 'arrival date', 'check-in', 'checkin', 'date arrivee', "date d'arrivée", 'arrivée'],
-  departure_date: ['departure', 'departure date', 'check-out', 'checkout', 'date depart', 'date de départ', 'départ'],
-  total_amount: ['total', 'total amount', 'rate amount', 'amount', 'montant', 'total price'],
+  arrival_date: ['arrival', 'arrival date', 'check-in', 'checkin', 'date arrivee', "date d'arrivée", 'arrivée', "date d'entrée"],
+  departure_date: ['departure', 'departure date', 'check-out', 'checkout', 'date depart', 'date de départ', 'départ', 'date de sortie'],
+  total_amount: ['total', 'total amount', 'rate amount', 'amount', 'montant', 'montant total', 'total price'],
   channel: ['channel', 'source', 'market code', 'market'],
   status: ['status', 'res status', 'statut'],
   adults: ['adults', 'pax adults', 'adultes'],

@@ -19,7 +19,11 @@ export function validateEntity(
 
   if (entityType === 'reservation') {
     if (!data.confirmation_number) errors.push('confirmation_number manquant');
-    if (!data.guest_email || !EMAIL_RE.test(String(data.guest_email))) {
+    const hasGuestName = Boolean(data.guest_first_name || data.guest_last_name);
+    if (data.guest_email) {
+      if (!EMAIL_RE.test(String(data.guest_email))) errors.push(`guest_email manquant ou invalide: ${data.guest_email}`);
+    } else if (!hasGuestName) {
+      // Sans e-mail (ex. export Odoo), le nom du client suffit a l'identifier.
       errors.push(`guest_email manquant ou invalide: ${data.guest_email}`);
     }
     if (!data.arrival_date) errors.push('arrival_date manquant ou non reconnu');
@@ -27,7 +31,11 @@ export function validateEntity(
     if (data.arrival_date && data.departure_date) {
       const arr = new Date(String(data.arrival_date));
       const dep = new Date(String(data.departure_date));
-      if (dep <= arr) errors.push('departure_date doit être postérieure à arrival_date');
+      if (dep.getTime() === arr.getTime()) {
+        errors.push("Séjour à la journée : arrivée et départ le même jour (une réservation doit couvrir au moins une nuit)");
+      } else if (dep < arr) {
+        errors.push('departure_date doit être postérieure à arrival_date');
+      }
     }
     if (data.total_amount !== undefined && data.total_amount !== null && isNaN(Number(data.total_amount))) {
       errors.push(`total_amount invalide: ${data.total_amount}`);
