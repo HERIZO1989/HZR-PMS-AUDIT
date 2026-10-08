@@ -18,10 +18,18 @@ interface StageResult {
   preview: PreviewRow[];
 }
 
+function localToday(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [sourceSystem, setSourceSystem] = useState('generic_csv');
   const [targetEntityType, setTargetEntityType] = useState<'reservation' | 'guest'>('reservation');
+  // Periode : l'historique deja traite dans l'ancien systeme n'a pas a etre reimporte (il fausserait occupation et ADR).
+  const [scope, setScope] = useState<'all' | 'current'>('all');
   const [staging, setStaging] = useState(false);
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<StageResult | null>(null);
@@ -43,6 +51,7 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
     form.append('tenantId', tenantId);
     form.append('sourceSystem', sourceSystem);
     form.append('targetEntityType', targetEntityType);
+    if (scope === 'current' && targetEntityType === 'reservation') form.append('importFrom', localToday());
 
     const res = await fetch('/api/imports', { method: 'POST', body: form });
     const data = await res.json();
@@ -72,7 +81,11 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
         <div className="grid gap-4 sm:grid-cols-2">
           <select
             value={sourceSystem}
-            onChange={(e) => setSourceSystem(e.target.value)}
+            onChange={(e) => {
+              setSourceSystem(e.target.value);
+              // Un export Odoo contient tout l'historique : par defaut on n'importe que les sejours en cours et a venir.
+              setScope(e.target.value === 'odoo' ? 'current' : 'all');
+            }}
             className="field"
           >
             <option value="generic_csv">Fichier générique</option>
@@ -89,6 +102,16 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
             <option value="guest">Clients</option>
           </select>
         </div>
+
+        {targetEntityType === 'reservation' && (
+          <div>
+            <label htmlFor="import-scope" className="field-label">Période à importer</label>
+            <select id="import-scope" value={scope} onChange={(e) => setScope(e.target.value as 'all' | 'current')} className="field sm:w-1/2">
+              <option value="all">Tout le fichier</option>
+              <option value="current">Séjours en cours et à venir (départ à partir d'aujourd'hui)</option>
+            </select>
+          </div>
+        )}
 
         <input
           type="file"

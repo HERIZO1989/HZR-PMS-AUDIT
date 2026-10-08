@@ -54,7 +54,7 @@ export const MAPPING_PRESETS: Record<SourceSystem, MappingConfig | null> = {
       { sourceField: 'Status', targetField: 'status' },
     ],
     statusMap: ODOO_STATUS_MAP,
-    options: { skipGroupRows: true, uniqueConfirmationNumber: true, splitNameLastFirst: true },
+    options: { skipGroupRows: true, uniqueConfirmationNumber: true, splitNameLastFirst: true, allowDayUse: true },
   },
   fidelio: null,
   generic_csv: null,

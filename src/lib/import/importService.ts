@@ -4,7 +4,7 @@ import { suggestMapping, MAPPING_PRESETS } from './mappingPresets';
 import { applyTransform } from './normalizers';
 import { validateEntity } from './validators';
 import { buildOdooConfirmationNumber, isOdooGroupRow, normalizeKey, splitOdooName } from './odoo';
-import type { MappingConfig, NormalizedRowResult, SourceFileType, SourceSystem, TargetEntityType } from './types';
+import type { ImportScope, MappingConfig, NormalizedRowResult, SourceFileType, SourceSystem, TargetEntityType } from './types';
 
 export interface ImportContext {
   tenantId: string;
@@ -88,6 +88,15 @@ export class ImportService {
       delete normalized.guest_full_name;
     }
 
+    // Sejour a la journee : arrivee et depart le meme jour (accepte seulement si le preset l'autorise).
+    if (
+      mapping.options?.allowDayUse &&
+      normalized.arrival_date &&
+      normalized.arrival_date === normalized.departure_date
+    ) {
+      normalized.stay_type = 'day_use';
+    }
+
     // Statuts du fichier -> statuts du PMS (une valeur inconnue est laissee telle quelle : la validation la signale).
     if (mapping.statusMap && typeof normalized.status === 'string' && normalized.status) {
       const mapped = mapping.statusMap[normalizeKey(normalized.status)];
@@ -105,6 +114,7 @@ export class ImportService {
     content: string | Buffer;
     targetEntityType: TargetEntityType;
     mappingOverride?: MappingConfig;
+    scope?: ImportScope;
   }): Promise<{ batchId: string; results: NormalizedRowResult[] }> {
     const rawRows = parseFile(params.fileType, params.content);
     if (rawRows.length === 0) {
@@ -147,6 +157,14 @@ export class ImportService {
         return { rowNumber, raw, normalized: null, status: 'skipped' as const, errors: ['Ligne de regroupement du fichier (total par statut), ignorée'] };
       }
       const { normalized, errors: mappingErrors } = this.mapAndNormalizeRow(raw, mapping);
+      // Hors periode choisie : ignoree (meme si elle comportait des erreurs, qui n'ont plus d'importance).
+      const departure = typeof normalized.departure_date === 'string' ? normalized.departure_date : null;
+      if (params.scope?.departureFrom && departure && departure < params.scope.departureFrom) {
+        return {
+          rowNumber, raw, normalized: null, status: 'skipped' as const,
+          errors: [`Séjour terminé avant le ${params.scope.departureFrom} (hors période importée)`],
+        };
+      }
       const businessErrors = validateEntity(mapping.targetEntityType, normalized);
       const errors = [...mappingErrors, ...businessErrors];
       return {

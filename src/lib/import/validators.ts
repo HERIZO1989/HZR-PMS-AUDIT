@@ -31,7 +31,9 @@ export function validateEntity(
     if (data.arrival_date && data.departure_date) {
       const arr = new Date(String(data.arrival_date));
       const dep = new Date(String(data.departure_date));
-      if (dep.getTime() === arr.getTime()) {
+      if (dep.getTime() === arr.getTime() && data.stay_type === 'day_use') {
+        // sejour a la journee autorise par le preset : rien a signaler
+      } else if (dep.getTime() === arr.getTime()) {
         errors.push("Séjour à la journée : arrivée et départ le même jour (une réservation doit couvrir au moins une nuit)");
       } else if (dep < arr) {
         errors.push('departure_date doit être postérieure à arrival_date');
