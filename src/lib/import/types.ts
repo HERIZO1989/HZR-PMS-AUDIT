@@ -32,7 +32,15 @@ export interface MappingConfig {
     uniqueConfirmationNumber?: boolean;
     /** Separe un nom unique "NOM Prenom" en nom / prenom. */
     splitNameLastFirst?: boolean;
+    /** Une reservation dont l'arrivee et le depart tombent le meme jour est importee comme sejour a la journee (stay_type = 'day_use'). */
+    allowDayUse?: boolean;
   };
+}
+
+/** Periode importee : les lignes dont le depart est anterieur a cette date sont ignorees (ex. historique deja traite dans l'ancien systeme). */
+export interface ImportScope {
+  /** AAAA-MM-JJ : seuls les sejours dont le depart est ce jour-la ou plus tard sont importes. */
+  departureFrom?: string;
 }
 
 export interface NormalizedRowResult {

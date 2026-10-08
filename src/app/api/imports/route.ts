@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
   const tenantId = formData.get('tenantId') as string | null;
   const sourceSystem = (formData.get('sourceSystem') as string | null) ?? 'generic_csv';
   const targetEntityType = (formData.get('targetEntityType') as 'guest' | 'reservation' | null) ?? 'reservation';
+  const importFromRaw = formData.get('importFrom') as string | null;
+  const importFrom = importFromRaw && /^\d{4}-\d{2}-\d{2}$/.test(importFromRaw) ? importFromRaw : undefined;
 
   if (!file || !hotelId || !tenantId) {
     return NextResponse.json({ error: 'file, hotelId et tenantId sont requis' }, { status: 400 });
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
       sourceSystem: sourceSystem as any,
       content,
       targetEntityType,
+      scope: importFrom ? { departureFrom: importFrom } : undefined,
     });
 
     return NextResponse.json({

@@ -3,7 +3,8 @@ import * as XLSX from 'xlsx';
 import { ImportService } from '../src/lib/import/importService';
 import { suggestMapping, MAPPING_PRESETS } from '../src/lib/import/mappingPresets';
 import { normalizeDate, normalizeCurrency } from '../src/lib/import/normalizers';
-import { splitOdooName, buildOdooConfirmationNumber, isOdooGroupRow, normalizeKey } from '../src/lib/import/odoo';
+import { splitOdooName, buildOdooConfirmationNumber, isOdooGroupRow, normalizeKey, ODOO_STATUS_MAP } from '../src/lib/import/odoo';
+import { validateEntity } from '../src/lib/import/validators';
 
 // Tests purs (aucune base requise). Le classeur de test reproduit la structure de l'export reel d'Anjary
 // (liste groupee par statut, cellules de date, montants formates) avec des donnees entierement fictives.
@@ -53,9 +54,10 @@ function fakeSupabase() {
   return { client, rows };
 }
 
-async function stage() {
+async function stage(scope?: { departureFrom?: string }) {
   const { client } = fakeSupabase();
   return new ImportService(client).stageImport({
+    scope,
     ctx: { tenantId: 't', hotelId: 'h', uploadedBy: 'u' },
     fileName: 'export.xlsx', fileType: 'xlsx', sourceSystem: 'odoo', content: buildWorkbook(), targetEntityType: 'reservation',
   });
@@ -93,7 +95,7 @@ describe('Import Odoo de bout en bout (classeur fictif)', () => {
   it('importe les reservations sans e-mail et normalise dates, montants, devise et statuts', async () => {
     const { results } = await stage();
     const ok = results.filter((r) => r.status === 'valid').map((r) => r.normalized as any);
-    expect(ok).toHaveLength(4); // 6 reservations - 1 sejour a la journee - 1 depart avant arrivee
+    expect(ok).toHaveLength(5); // 6 reservations - 1 depart avant arrivee (le sejour a la journee est accepte)
     const dupont = ok.find((o) => o.guest_last_name === 'DUPONT');
     expect(dupont).toMatchObject({ guest_first_name: 'Marie', arrival_date: '2026-04-28', departure_date: '2026-04-30', total_amount: 216000, currency_code: 'MGA', status: 'checked_out' });
     expect(dupont.guest_email).toBeUndefined();
@@ -108,18 +110,62 @@ describe('Import Odoo de bout en bout (classeur fictif)', () => {
     expect(numbers.filter((n: string) => n.startsWith('B00001-'))).toHaveLength(2);
   });
 
-  it('signale clairement un sejour a la journee et un depart avant l\'arrivee', async () => {
+  it("importe un sejour a la journee comme tel et refuse toujours un depart avant l'arrivee", async () => {
     const { results } = await stage();
     const same = results.find((r) => r.raw['Référence'] === 'B00004');
     const inverted = results.find((r) => r.raw['Référence'] === 'B00005');
-    expect(same?.status).toBe('invalid');
-    expect(same?.errors.join(' ')).toMatch(/à la journée/);
+    expect(same?.status).toBe('valid');
+    expect((same?.normalized as any).stay_type).toBe('day_use');
+    expect(results.filter((r) => r.status === 'valid' && (r.normalized as any).stay_type === 'day_use')).toHaveLength(1);
     expect(inverted?.status).toBe('invalid');
     expect(inverted?.errors.join(' ')).toMatch(/postérieure/);
   });
 });
 
+describe('Periode importee', () => {
+  it("ignore les sejours termines avant la date choisie, erreurs comprises", async () => {
+    const { results } = await stage({ departureFrom: '2026-06-01' });
+    const byRef = (ref: string) => results.find((r) => r.raw['Référence'] === ref)!;
+    expect(byRef('B00001').status).toBe('skipped');           // depart 30/04
+    expect(byRef('B00002').status).toBe('skipped');           // depart 09/05
+    expect(byRef('B00005').status).toBe('skipped');           // depart 02/04 : erreur sans importance, hors periode
+    expect(byRef('B00005').errors.join(' ')).toMatch(/hors période/);
+    expect(byRef('B00003').status).toBe('valid');             // depart 04/11
+    expect(byRef('B00004').status).toBe('valid');             // depart 10/06 (jour meme, jour d'usage)
+    expect(results.filter((r) => r.status === 'valid')).toHaveLength(2);
+  });
+
+  it("garde un sejour qui part le jour meme de la date choisie", async () => {
+    const { results } = await stage({ departureFrom: '2026-06-10' });
+    expect(results.find((r) => r.raw['Référence'] === 'B00004')?.status).toBe('valid');
+  });
+
+  it('sans periode, tout est conserve', async () => {
+    const { results } = await stage();
+    expect(results.filter((r) => r.status === 'skipped')).toHaveLength(3); // seulement les regroupements
+  });
+});
+
+describe('Validation du sejour a la journee', () => {
+  const base = { confirmation_number: 'X', guest_first_name: 'A', guest_last_name: 'B', arrival_date: '2026-06-10', departure_date: '2026-06-10' };
+  it('refuse arrivee = depart sans type day_use (autres sources)', () => {
+    expect(validateEntity('reservation', base).join(' ')).toMatch(/à la journée/);
+  });
+  it('accepte arrivee = depart avec stay_type day_use', () => {
+    expect(validateEntity('reservation', { ...base, stay_type: 'day_use' })).toEqual([]);
+  });
+  it('refuse un depart anterieur meme en day_use', () => {
+    expect(validateEntity('reservation', { ...base, departure_date: '2026-06-09', stay_type: 'day_use' }).join(' ')).toMatch(/postérieure/);
+  });
+});
+
 describe('Assistants Odoo', () => {
+  it('lit « Verrouiller » comme un sejour parti et garde les autres statuts', () => {
+    expect(ODOO_STATUS_MAP[normalizeKey('Verrouiller')]).toBe('checked_out');
+    expect(ODOO_STATUS_MAP[normalizeKey('Attribué')]).toBe('confirmed');
+    expect(ODOO_STATUS_MAP[normalizeKey('Brouillon')]).toBe('tentative');
+  });
+
   it('detecte les lignes de regroupement', () => {
     expect(isOdooGroupRow('checkout (4219)', null, null, null)).toBe(true);
     expect(isOdooGroupRow('B00045', 'DUPONT Marie', '2026-04-28', '2026-04-30')).toBe(false);

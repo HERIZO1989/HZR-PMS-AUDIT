@@ -68,8 +68,10 @@ export function normalizeKey(value: unknown): string {
 }
 
 /**
- * Statuts Odoo -> statuts du PMS. "Verrouiller" (lock) : sur l'export d'Anjary les 13 sejours concernes sont tous deja termines ;
- * on ne peut pas affirmer qu'ils ont eu lieu, ils restent donc "confirmed" (visibles pour regularisation) plutot que "checked_out".
+ * Statuts Odoo -> statuts du PMS.
+ * "Verrouiller" (lock) : sur l'export d'Anjary, les 13 sejours concernes sont tous termines et 9 sur 13 sont « Entierement factures »
+ * avec un paiement en cours : le verrouillage intervient apres la facturation, donc le sejour a bien eu lieu -> checked_out.
+ * Pour revenir a une lecture prudente, remplacer par 'confirmed' ci-dessous (une seule ligne).
  */
 export const ODOO_STATUS_MAP: Record<string, string> = {
   sortie: 'checked_out',
@@ -77,8 +79,8 @@ export const ODOO_STATUS_MAP: Record<string, string> = {
   confirme: 'confirmed',
   attribue: 'confirmed',
   brouillon: 'tentative',
-  verrouiller: 'confirmed',
-  verrouille: 'confirmed',
+  verrouiller: 'checked_out',
+  verrouille: 'checked_out',
   // valeurs techniques des groupes Odoo (exports en anglais ou en-tetes de groupe)
   checkout: 'checked_out',
   cancel: 'cancelled',
@@ -86,5 +88,5 @@ export const ODOO_STATUS_MAP: Record<string, string> = {
   allot: 'confirmed',
   initial: 'tentative',
   draft: 'tentative',
-  lock: 'confirmed',
+  lock: 'checked_out',
 };
