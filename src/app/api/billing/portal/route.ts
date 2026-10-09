@@ -20,13 +20,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Aucun client Stripe associé — souscrivez à un plan au préalable' }, { status: 404 });
   }
 
-  const stripe = getStripe();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+  try {
+    const stripe = getStripe();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
-  const portalSession = await stripe.billingPortal.sessions.create({
-    customer: sub.stripe_customer_id,
-    return_url: `${appUrl}/billing`,
-  });
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: sub.stripe_customer_id,
+      return_url: `${appUrl}/billing`,
+    });
 
-  return NextResponse.json({ url: portalSession.url });
+    return NextResponse.json({ url: portalSession.url });
+  } catch (err) {
+    console.error('[billing/portal] Échec Stripe:', err instanceof Error ? err.message : String(err));
+    return NextResponse.json(
+      { error: "Le portail de facturation n'a pas pu être ouvert. Réessayez dans un instant ; si le problème persiste, contactez l'assistance." },
+      { status: 502 }
+    );
+  }
 }

@@ -35,28 +35,43 @@ export async function POST(req: NextRequest) {
     .eq('tenant_id', session!.tenantId)
     .maybeSingle();
 
-  const stripe = getStripe();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+  try {
+    const stripe = getStripe();
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
-  let customerId = existingSub?.stripe_customer_id ?? undefined;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: session!.email,
-      name: tenant?.name ?? undefined,
-      metadata: { tenant_id: session!.tenantId },
+    let customerId = existingSub?.stripe_customer_id ?? undefined;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: session!.email,
+        name: tenant?.name ?? undefined,
+        metadata: { tenant_id: session!.tenantId },
+      });
+      customerId = customer.id;
+    }
+
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: customerId,
+      line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
+      success_url: `${appUrl}/billing?success=1`,
+      cancel_url: `${appUrl}/billing?canceled=1`,
+      metadata: { tenant_id: session!.tenantId, plan_code: plan.code },
+      subscription_data: { metadata: { tenant_id: session!.tenantId, plan_code: plan.code } },
     });
-    customerId = customer.id;
+
+    return NextResponse.json({ url: checkoutSession.url });
+  } catch (err) {
+    // Une erreur Stripe ne doit jamais remonter en 500 muet : on la journalise et on explique quoi faire.
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error('[billing/checkout] Échec Stripe:', detail);
+    const taxCode = /tax code/i.test(detail);
+    return NextResponse.json(
+      {
+        error: taxCode
+          ? "Le paiement ne peut pas démarrer : un code fiscal (« product tax code ») est manquant sur le produit dans Stripe. L'administrateur doit le renseigner dans le tableau de bord Stripe (Produits), puis réessayer."
+          : "Le paiement n'a pas pu être initialisé. Réessayez dans un instant ; si le problème persiste, contactez l'assistance.",
+      },
+      { status: 502 }
+    );
   }
-
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: 'subscription',
-    customer: customerId,
-    line_items: [{ price: plan.stripe_price_id, quantity: 1 }],
-    success_url: `${appUrl}/billing?success=1`,
-    cancel_url: `${appUrl}/billing?canceled=1`,
-    metadata: { tenant_id: session!.tenantId, plan_code: plan.code },
-    subscription_data: { metadata: { tenant_id: session!.tenantId, plan_code: plan.code } },
-  });
-
-  return NextResponse.json({ url: checkoutSession.url });
 }
