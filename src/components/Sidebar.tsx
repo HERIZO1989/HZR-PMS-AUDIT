@@ -21,8 +21,9 @@ function initials(name: string): string {
 }
 
 /** Barre de navigation unique : marque, sections, utilisateur. Sur mobile les sections passent sur une seconde ligne defilante. */
-export function Sidebar({ displayName }: { displayName: string }) {
+export function Sidebar({ displayName, showDemo = false }: { displayName: string; showDemo?: boolean }) {
   const pathname = usePathname();
+  const items = showDemo ? [...ITEMS, { href: '/demo', label: 'Démo' }] : ITEMS;
 
   return (
     <header className="bg-navy text-white">
@@ -38,7 +39,7 @@ export function Sidebar({ displayName }: { displayName: string }) {
           aria-label="Sections"
           className="order-3 -mx-2 flex w-full overflow-x-auto border-t border-navy-line md:order-none md:mx-0 md:w-auto md:flex-1 md:border-t-0"
         >
-          {ITEMS.map((item) => {
+          {items.map((item) => {
             const active = pathname?.startsWith(item.href);
             return (
               <Link
