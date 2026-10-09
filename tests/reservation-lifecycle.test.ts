@@ -899,3 +899,36 @@ describe('TASK 32 — import de reservations sans e-mail, par tranches', () => {
     await supabase.from('guests').delete().eq('tenant_id', tenantId).eq('first_name', first);
   });
 });
+
+describe('TASK 34 — hôtels de démonstration', () => {
+  it("crée un hôtel complet avec un mot de passe qui permet de se connecter, puis le supprime sans reliquat", async () => {
+    const { data, error } = await supabase.rpc('create_demo_hotel', {
+      p_tenant_name: `VITEST Demo ${Date.now()}`, p_hotel_name: 'VITEST Hotel Demo', p_room_count: 12, p_guest_count: 8, p_reservation_count: 25,
+    });
+    expect(error).toBeNull();
+    const d = data[0];
+    try {
+      expect(d.out_rooms).toBe(12);
+      expect(d.out_reservations).toBeGreaterThanOrEqual(20); // chevauchements aleatoires retentes : le generateur ne doit plus jamais echouer
+      expect(d.out_password).toMatch(/^[A-Za-z0-9]{12}$/);
+
+      const ok = await supabase.rpc('verify_staff_login', { p_email: 'gm@demo.local', p_password: d.out_password, p_tenant_code: d.out_tenant_code });
+      expect(ok.data).toHaveLength(1);
+      const ko = await supabase.rpc('verify_staff_login', { p_email: 'gm@demo.local', p_password: 'mauvais', p_tenant_code: d.out_tenant_code });
+      expect(ko.data).toHaveLength(0);
+
+      // Un tenant qui n'est pas une demo ne peut jamais etre supprime.
+      const refused = await supabase.rpc('delete_demo_tenant', { p_tenant_id: tenantId });
+      expect(refused.error?.message).toMatch(/pas un hotel de demonstration/);
+      const { data: still } = await supabase.from('tenants').select('id').eq('id', tenantId);
+      expect(still).toHaveLength(1);
+    } finally {
+      const del = await supabase.rpc('delete_demo_tenant', { p_tenant_id: d.out_tenant_id });
+      expect(del.error).toBeNull();
+    }
+    const { data: gone } = await supabase.from('tenants').select('id').eq('id', d.out_tenant_id);
+    expect(gone).toHaveLength(0);
+    const { count } = await supabase.from('rooms').select('*', { count: 'exact', head: true }).eq('hotel_id', d.out_hotel_id);
+    expect(count).toBe(0);
+  });
+});
