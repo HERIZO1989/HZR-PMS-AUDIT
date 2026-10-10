@@ -1,5 +1,12 @@
+export const DEMO_CURRENCIES = {
+  EUR: { label: 'Euro (€)', hint: 'Établissement de la Côte d’Azur, tarifs de 180 à 950 €' },
+  MGA: { label: 'Ariary (Ar), TVA 20 % TTC', hint: 'Établissement malgache, tarifs de 180 000 à 950 000 Ar, fuseau Antananarivo' },
+} as const;
+export type DemoCurrency = keyof typeof DEMO_CURRENCIES;
+
 export interface DemoHotelRequest {
   hotelName: string;
+  currency: DemoCurrency;
   rooms: number;
   guests: number;
   reservations: number;
@@ -18,6 +25,9 @@ export function parseDemoRequest(body: unknown): { ok: true; value: DemoHotelReq
   const hotelName = typeof b.hotelName === 'string' ? b.hotelName.trim().replace(/\s+/g, ' ') : '';
   if (hotelName.length < 2 || hotelName.length > 80) return { ok: false, error: "Le nom de l'hôtel doit comporter entre 2 et 80 caractères" };
 
+  const currency = b.currency === undefined || b.currency === null || b.currency === '' ? 'EUR' : b.currency;
+  if (typeof currency !== 'string' || !Object.prototype.hasOwnProperty.call(DEMO_CURRENCIES, currency)) return { ok: false, error: 'Devise non prise en charge (EUR ou MGA)' };
+
   const num = (v: unknown, def: number) => (v === undefined || v === null || v === '' ? def : Number(v));
   const rooms = num(b.rooms, DEMO_LIMITS.rooms.default);
   const guests = num(b.guests, DEMO_LIMITS.guests.default);
@@ -32,5 +42,5 @@ export function parseDemoRequest(body: unknown): { ok: true; value: DemoHotelReq
       return { ok: false, error: `Nombre de ${label} : entier entre ${lim.min} et ${lim.max}` };
     }
   }
-  return { ok: true, value: { hotelName, rooms, guests, reservations } };
+  return { ok: true, value: { hotelName, currency: currency as DemoCurrency, rooms, guests, reservations } };
 }

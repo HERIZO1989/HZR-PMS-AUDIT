@@ -932,3 +932,41 @@ describe('TASK 34 — hôtels de démonstration', () => {
     expect(count).toBe(0);
   });
 });
+
+describe('TASK 36 — hôtel de démonstration en ariary et mot de passe réinitialisable', () => {
+  it("met les montants à l'échelle de l'ariary, applique la TVA, et réinitialise le mot de passe", async () => {
+    const { data, error } = await supabase.rpc('create_demo_hotel', {
+      p_tenant_name: `VITEST Demo MGA ${Date.now()}`, p_hotel_name: 'VITEST Hotel MGA', p_room_count: 12, p_guest_count: 8, p_reservation_count: 15, p_currency: 'MGA',
+    });
+    expect(error).toBeNull();
+    const d = data[0];
+    try {
+      expect(d.out_currency).toBe('MGA');
+      const { data: hotel } = await supabase.from('hotels').select('currency_code, vat_rate, prices_include_vat, timezone').eq('id', d.out_hotel_id).single();
+      expect(hotel).toMatchObject({ currency_code: 'MGA', prices_include_vat: true, timezone: 'Indian/Antananarivo' });
+      expect(Number(hotel!.vat_rate)).toBeCloseTo(0.2, 4);
+
+      const { data: types } = await supabase.from('room_types').select('base_rate').eq('hotel_id', d.out_hotel_id);
+      const rates = types!.map((t) => Number(t.base_rate));
+      expect(Math.min(...rates)).toBeGreaterThanOrEqual(100000); // ordre de grandeur de l'ariary, pas de l'euro
+      const { count: wrongCurrency } = await supabase.from('reservations').select('*', { count: 'exact', head: true }).eq('hotel_id', d.out_hotel_id).neq('currency_code', 'MGA');
+      expect(wrongCurrency).toBe(0);
+
+      const reset = await supabase.rpc('reset_demo_password', { p_tenant_id: d.out_tenant_id });
+      expect(reset.error).toBeNull();
+      expect(reset.data).toMatch(/^[A-Za-z0-9]{12}$/);
+      expect(reset.data).not.toBe(d.out_password);
+      const oldPw = await supabase.rpc('verify_staff_login', { p_email: 'gm@demo.local', p_password: d.out_password, p_tenant_code: d.out_tenant_code });
+      expect(oldPw.data).toHaveLength(0);
+      const newPw = await supabase.rpc('verify_staff_login', { p_email: 'gm@demo.local', p_password: reset.data, p_tenant_code: d.out_tenant_code });
+      expect(newPw.data).toHaveLength(1);
+
+      const refused = await supabase.rpc('reset_demo_password', { p_tenant_id: tenantId });
+      expect(refused.error?.message).toMatch(/pas un hotel de demonstration/);
+      const bad = await supabase.rpc('create_demo_hotel', { p_tenant_name: 'X Groupe', p_hotel_name: 'X Hotel', p_currency: 'USD' });
+      expect(bad.error?.message).toMatch(/Devise/);
+    } finally {
+      await supabase.rpc('delete_demo_tenant', { p_tenant_id: d.out_tenant_id });
+    }
+  });
+});

@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   const demos = await Promise.all(
     (tenants ?? []).map(async (t) => {
-      const { data: hotel } = await supabase.from('hotels').select('id, name').eq('tenant_id', t.id).limit(1).maybeSingle();
+      const { data: hotel } = await supabase.from('hotels').select('id, name, currency_code').eq('tenant_id', t.id).limit(1).maybeSingle();
       const count = async (table: string, col: string, val: string) =>
         (await supabase.from(table).select('*', { count: 'exact', head: true }).eq(col, val)).count ?? 0;
       return {
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
         tenantCode: t.code,
         tenantName: t.name,
         hotelName: hotel?.name ?? '—',
+        currency: hotel?.currency_code ?? null,
         createdAt: t.created_at,
         rooms: hotel ? await count('rooms', 'hotel_id', hotel.id) : 0,
         reservations: hotel ? await count('reservations', 'hotel_id', hotel.id) : 0,
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = parseDemoRequest(await req.json().catch(() => null));
   if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400 });
-  const { hotelName, rooms, guests, reservations } = parsed.value;
+  const { hotelName, currency, rooms, guests, reservations } = parsed.value;
 
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase.rpc('create_demo_hotel', {
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
     p_room_count: rooms,
     p_guest_count: guests,
     p_reservation_count: reservations,
+    p_currency: currency,
   });
   if (error || !data?.[0]) {
     return NextResponse.json({ error: error?.message ?? 'Création impossible' }, { status: error?.message?.includes('Limite') ? 409 : 500 });
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
       tenantId: d.out_tenant_id,
       tenantCode: d.out_tenant_code,
       hotelName,
+      currency: d.out_currency,
       rooms: d.out_rooms,
       guests: d.out_guests,
       reservations: d.out_reservations,

@@ -30,7 +30,7 @@ describe("Administrateur de la plateforme", () => {
 describe('Validation de la demande de création', () => {
   it('applique les valeurs par défaut et nettoie le nom', () => {
     const r = parseDemoRequest({ hotelName: '  Grand   Hôtel  Démo ' });
-    expect(r).toEqual({ ok: true, value: { hotelName: 'Grand Hôtel Démo', rooms: 40, guests: 60, reservations: 120 } });
+    expect(r).toEqual({ ok: true, value: { hotelName: 'Grand Hôtel Démo', currency: 'EUR', rooms: 40, guests: 60, reservations: 120 } });
   });
   it('accepte les bornes exactes', () => {
     expect(parseDemoRequest({ hotelName: 'Hôtel', rooms: DEMO_LIMITS.rooms.max, guests: DEMO_LIMITS.guests.min, reservations: 0 }).ok).toBe(true);
@@ -44,6 +44,13 @@ describe('Validation de la demande de création', () => {
     for (const bad of [{ rooms: 4 }, { rooms: 201 }, { guests: 501 }, { reservations: -1 }, { reservations: 2001 }, { rooms: 10.5 }, { rooms: 'abc' }]) {
       const r = parseDemoRequest({ hotelName: 'Hôtel', ...bad });
       expect(r.ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+  it('accepte EUR et MGA et refuse toute autre devise', () => {
+    expect(parseDemoRequest({ hotelName: 'Hôtel', currency: 'MGA' })).toMatchObject({ ok: true, value: { currency: 'MGA' } });
+    expect(parseDemoRequest({ hotelName: 'Hôtel', currency: 'EUR' })).toMatchObject({ ok: true, value: { currency: 'EUR' } });
+    for (const bad of ['USD', 'mga', 'toString', '__proto__', 12]) {
+      expect(parseDemoRequest({ hotelName: 'Hôtel', currency: bad }).ok, String(bad)).toBe(false);
     }
   });
   it('refuse un corps invalide', () => {

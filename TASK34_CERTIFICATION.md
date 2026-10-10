@@ -27,3 +27,11 @@ réservations, séjours, housekeeping, folios, paiements, conciergerie, Night Au
 - Le mot de passe n'est pas conservé : perdu, il faut supprimer l'hôtel et en recréer un.
 - Le générateur ne reproduit pas la TVA ni les nuitées postées automatiquement d'Anjary.
 - Variable à définir côté serveur : `PLATFORM_ADMIN_EMAILS` (sans elle, l'écran Démo n'apparaît pour personne).
+
+## Mise à jour TASK 36 — limites levées
+- Devise : choix EUR ou MGA. En MGA, tous les montants générés sont multipliés par 1 000 (chambres de 180 000 à 950 000 Ar), TVA 20 % TTC comme à Anjary, fuseau Indian/Antananarivo.
+  Vérifié sur la base : aucune devise résiduelle en euros dans l'hôtel en ariary ; l'hôtel en euros est inchangé ; autre devise refusée.
+- Mot de passe : bouton « Nouveau mot de passe » (route POST /api/demo-hotels/[id]/reset-password) ; l'ancien cesse de fonctionner et les sessions ouvertes sont fermées ;
+  refusé pour un vrai hôtel (Anjary vérifié intact).
+- Défaut trouvé par un test : la validation de la devise acceptait des noms hérités de JavaScript (« toString ») ; corrigé.
+- Restent : un mot de passe commun aux 6 comptes, e-mails de démo identiques d'un hôtel à l'autre (code établissement obligatoire), nuitées non postées automatiquement.
