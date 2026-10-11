@@ -60,6 +60,20 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
     setResult(data);
   }
 
+  const [rollback, setRollback] = useState<{ reservationsDeleted: number; reservationsKept: number; guestsDeleted: number } | null>(null);
+  const [rollingBack, setRollingBack] = useState(false);
+
+  async function handleRollback() {
+    if (!result) return;
+    if (!window.confirm("Annuler cet import ? Les réservations importées sont supprimées, sauf celles qui ont déjà un folio ou un séjour rattaché.")) return;
+    setRollingBack(true);
+    const res = await fetch(`/api/imports/${result.batchId}/rollback`, { method: 'POST' });
+    const data = await res.json();
+    setRollingBack(false);
+    if (!res.ok) return setError(data.error ?? "Échec de l'annulation");
+    setRollback(data);
+  }
+
   async function handleApply() {
     if (!result) return;
     setApplying(true);
@@ -154,10 +168,21 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
             </button>
           </div>
 
-          {applySummary && (
-            <p role="status" className="mb-4 rounded-sm bg-moss-tint px-4 py-3 text-sm text-moss">
-              {applySummary.imported} lignes importées, {applySummary.invalid} rejetées, {applySummary.skipped}{' '}
-              ignorées.
+          {applySummary && !rollback && (
+            <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-sm bg-moss-tint px-4 py-3 text-sm text-moss">
+              <span>
+                {applySummary.imported} lignes importées, {applySummary.invalid} rejetées, {applySummary.skipped}{' '}
+                ignorées.
+              </span>
+              <button onClick={handleRollback} disabled={rollingBack} className="btn-secondary btn-sm bg-white">
+                {rollingBack ? 'Annulation…' : 'Annuler cet import'}
+              </button>
+            </div>
+          )}
+          {rollback && (
+            <p role="status" className="mb-4 rounded-sm bg-ochre-tint px-4 py-3 text-sm text-ochre">
+              Import annulé : {rollback.reservationsDeleted} réservations et {rollback.guestsDeleted} clients supprimés
+              {rollback.reservationsKept > 0 ? `, ${rollback.reservationsKept} réservations conservées car déjà utilisées (folio ou séjour rattaché)` : ''}.
             </p>
           )}
 
