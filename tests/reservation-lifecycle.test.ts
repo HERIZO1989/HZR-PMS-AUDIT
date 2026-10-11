@@ -970,3 +970,41 @@ describe('TASK 36 — hôtel de démonstration en ariary et mot de passe réinit
     }
   });
 });
+
+describe('TASK 37 — annulation d\'un import', () => {
+  it("supprime les reservations importees non utilisees, garde celles qui ont un folio, et refuse une double annulation", async () => {
+    const stamp = Date.now();
+    const { data: batch } = await supabase.from('import_batches')
+      .insert({ tenant_id: tenantId, hotel_id: hotelId, source_system: 'odoo', file_name: 'rb.xlsx', file_type: 'xlsx', status: 'mapping' }).select('id').single();
+    const names = ['Un', 'Deux'];
+    const numbers = names.map((_, i) => `VT-RB-${stamp}-${i}`);
+    await supabase.from('import_rows').insert(numbers.map((n, i) => ({
+      tenant_id: tenantId, import_batch_id: batch!.id, row_number: i + 1, raw_data: {},
+      normalized_data: { confirmation_number: n, guest_first_name: `Rb${stamp}`, guest_last_name: names[i], arrival_date: '2032-02-01', departure_date: '2032-02-03', total_amount: 1, currency_code: 'MGA', status: 'confirmed' },
+      status: 'valid', target_entity_type: 'reservation',
+    })));
+    const applied = await supabase.rpc('apply_import_batch_chunk', { p_batch_id: batch!.id, p_limit: 500 });
+    expect(applied.data[0]).toMatchObject({ remaining: 0, imported: 2 });
+
+    // Une des deux reservations est ensuite utilisee : un folio est ouvert dessus.
+    const { data: used } = await supabase.from('reservations').select('id, guest_id').eq('hotel_id', hotelId).eq('confirmation_number', numbers[1]).single();
+    await supabase.from('folios').insert({ tenant_id: tenantId, hotel_id: hotelId, reservation_id: used!.id, guest_id: used!.guest_id, folio_number: `FOL-VT-RB-${stamp}`, status: 'open', currency_code: 'MGA', balance: 0 });
+
+    const rb = await supabase.rpc('rollback_import_batch', { p_batch_id: batch!.id, p_hotel_id: hotelId });
+    expect(rb.error).toBeNull();
+    expect(rb.data[0]).toMatchObject({ reservations_deleted: 1, reservations_kept: 1 });
+    const { data: left } = await supabase.from('reservations').select('confirmation_number').eq('hotel_id', hotelId).in('confirmation_number', numbers);
+    expect(left!.map((r) => r.confirmation_number)).toEqual([numbers[1]]);
+
+    const again = await supabase.rpc('rollback_import_batch', { p_batch_id: batch!.id, p_hotel_id: hotelId });
+    expect(again.error?.message).toMatch(/deja ete annule/);
+    const wrongHotel = await supabase.rpc('rollback_import_batch', { p_batch_id: batch!.id, p_hotel_id: '00000000-0000-0000-0000-000000000001' });
+    expect(wrongHotel.error?.message).toMatch(/introuvable/);
+
+    await supabase.from('folios').delete().eq('reservation_id', used!.id);
+    await supabase.from('reservations').delete().eq('hotel_id', hotelId).in('confirmation_number', numbers);
+    await supabase.from('import_rows').delete().eq('import_batch_id', batch!.id);
+    await supabase.from('import_batches').delete().eq('id', batch!.id);
+    await supabase.from('guests').delete().eq('tenant_id', tenantId).eq('first_name', `Rb${stamp}`);
+  });
+});
