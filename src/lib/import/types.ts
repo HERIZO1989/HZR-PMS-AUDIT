@@ -34,6 +34,8 @@ export interface MappingConfig {
     splitNameLastFirst?: boolean;
     /** Une reservation dont l'arrivee et le depart tombent le meme jour est importee comme sejour a la journee (stay_type = 'day_use'). */
     allowDayUse?: boolean;
+    /** Deduit le nombre et le type de chambres de chaque ligne a partir du prix par nuit et de la grille de tarifs de l'hotel (voir rateDecoder.ts). */
+    inferRoomsFromRate?: boolean;
   };
 }
 
@@ -41,6 +43,15 @@ export interface MappingConfig {
 export interface ImportScope {
   /** AAAA-MM-JJ : seuls les sejours dont le depart est ce jour-la ou plus tard sont importes. */
   departureFrom?: string;
+}
+
+/** Bilan du decodage des chambres, par ligne source. */
+export interface RoomDecodeSummary {
+  exact: number;
+  ambiguous: number;
+  unknown: number;
+  /** Nombre de reservations (chambres) creees a partir des lignes valides. */
+  rooms: number;
 }
 
 export interface NormalizedRowResult {

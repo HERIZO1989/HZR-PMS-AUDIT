@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const content = fileType === 'xlsx' || fileType === 'xls' ? buffer : buffer.toString('utf-8');
 
-    const { batchId, results } = await service.stageImport({
+    const { batchId, results, roomDecode } = await service.stageImport({
       ctx: { tenantId, hotelId, uploadedBy: session.staffUserId },
       fileName: file.name,
       fileType,
@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
       validRows: results.filter((r) => r.status === 'valid').length,
       invalidRows: results.filter((r) => r.status === 'invalid').length,
       skippedRows: results.filter((r) => r.status === 'skipped').length,
+      roomDecode: roomDecode ?? null,
       preview: results.slice(0, 15),
     });
   } catch (err: any) {
