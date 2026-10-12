@@ -38,6 +38,7 @@ function buildWorkbook(): Buffer {
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
 }
 
+let roomTypes: any[] = [];
 function fakeSupabase() {
   const rows: any[] = [];
   const client: any = {
@@ -48,6 +49,7 @@ function fakeSupabase() {
           update: () => ({ eq: async () => ({ error: null }) }),
         };
       }
+      if (t === 'room_types') return { select: () => ({ eq: async () => ({ data: roomTypes, error: null }) }) };
       return { insert: async (r: any[]) => { rows.push(...r); return { error: null }; } };
     },
   };
@@ -224,5 +226,62 @@ describe("Application d'un lot par tranches", () => {
     const rpc = vi.fn().mockResolvedValue({ data: [{ processed: 500, remaining: 99, imported: 1, invalid: 0, skipped: 0 }], error: null });
     await expect(new ImportService({ rpc } as any).applyBatch('b1')).rejects.toThrow(/trop volumineux/);
     expect(rpc).toHaveBeenCalledTimes(100);
+  });
+});
+
+describe('Import Odoo : chambres déduites du tarif', () => {
+  const TYPES = [
+    { id: 't-std', name: 'Standard', base_rate: 108000 },
+    { id: 't-sup', name: 'Supérieur', base_rate: 159000 },
+  ];
+  function workbook(lines: [string, string, string, string, number][]): Buffer {
+    const d = (s: string) => new Date(s + 'Z');
+    const rows: unknown[][] = [HEADERS, ...lines.map(([ref, client, arr, dep, total]) => [ref, client, 'Réception', d(arr), d(dep), total, 'MGA', 'Confirmé', 'Rien à facturer', 'Pas de facture', 'Non'])];
+    const ws = XLSX.utils.aoa_to_sheet(rows, { cellDates: true });
+    for (const addr of Object.keys(ws)) { const c = ws[addr] as XLSX.CellObject; if (addr[0] !== '!' && c.t === 'd') c.z = 'yyyy-mm-dd hh:mm:ss'; }
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'S'); return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+  async function stageWith(lines: [string, string, string, string, number][], types = TYPES) {
+    roomTypes = types;
+    const { client } = fakeSupabase();
+    return new ImportService(client).stageImport({
+      ctx: { tenantId: 't', hotelId: 'h', uploadedBy: 'u' }, fileName: 'e.xlsx', fileType: 'xlsx', sourceSystem: 'odoo', content: workbook(lines), targetEntityType: 'reservation',
+    });
+  }
+
+  it('crée une réservation par chambre, avec son type, et conserve le total de la ligne', async () => {
+    const { results, roomDecode } = await stageWith([
+      ['B1', 'DUPONT Marie', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 636000], // 2 nuits x 318 000 = 2 x Supérieur
+      ['B2', 'MARTIN Paul', '2026-10-20 12:00:00', '2026-10-21 11:00:00', 108000],   // 1 Standard
+      ['B3', 'LEROY Anne', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 300000],    // 150 000 : hors grille
+    ]);
+    const valid = results.filter((r) => r.status === 'valid').map((r) => r.normalized as any);
+    expect(valid).toHaveLength(4); // 2 + 1 + 1
+    const dupont = valid.filter((v) => v.guest_last_name === 'DUPONT');
+    expect(dupont).toHaveLength(2);
+    expect(dupont.every((v) => v.room_type_id === 't-sup')).toBe(true);
+    expect(dupont.reduce((s: number, v: any) => s + v.total_amount, 0)).toBe(636000);
+    expect(new Set(valid.map((v) => v.confirmation_number)).size).toBe(4); // numéros tous distincts
+    expect(dupont[0].confirmation_number.endsWith('-1') && dupont[1].confirmation_number.endsWith('-2')).toBe(true);
+    const martin = valid.find((v) => v.guest_last_name === 'MARTIN');
+    expect(martin).toMatchObject({ room_type_id: 't-std', total_amount: 108000 });
+    expect(martin.confirmation_number).not.toMatch(/-1$/); // une seule chambre : numéro inchangé
+    const leroy = valid.find((v) => v.guest_last_name === 'LEROY');
+    expect(leroy.room_type_id).toBeUndefined();
+    expect(leroy.special_requests).toMatch(/hors grille/);
+    expect(roomDecode).toEqual({ exact: 2, ambiguous: 0, unknown: 1, rooms: 4 });
+  });
+
+  it('un réimport du même fichier donne les mêmes numéros', async () => {
+    const lines: [string, string, string, string, number][] = [['B1', 'DUPONT Marie', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 636000]];
+    const a = (await stageWith(lines)).results.map((r) => (r.normalized as any).confirmation_number);
+    const b = (await stageWith(lines)).results.map((r) => (r.normalized as any).confirmation_number);
+    expect(a).toEqual(b);
+  });
+
+  it("n'expanse rien quand l'hôtel n'a aucun type de chambre avec un tarif", async () => {
+    const { results, roomDecode } = await stageWith([['B1', 'DUPONT Marie', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 636000]], []);
+    expect(roomDecode).toBeUndefined();
+    expect(results.filter((r) => r.status === 'valid')).toHaveLength(1);
   });
 });

@@ -4,7 +4,8 @@ import { suggestMapping, MAPPING_PRESETS } from './mappingPresets';
 import { applyTransform } from './normalizers';
 import { validateEntity } from './validators';
 import { buildOdooConfirmationNumber, isOdooGroupRow, normalizeKey, splitOdooName } from './odoo';
-import type { ImportScope, MappingConfig, NormalizedRowResult, SourceFileType, SourceSystem, TargetEntityType } from './types';
+import type { ImportScope, MappingConfig, NormalizedRowResult, RoomDecodeSummary, SourceFileType, SourceSystem, TargetEntityType } from './types';
+import { buildRateGrid, expandLine } from './rateDecoder';
 
 export interface ImportContext {
   tenantId: string;
@@ -115,7 +116,7 @@ export class ImportService {
     targetEntityType: TargetEntityType;
     mappingOverride?: MappingConfig;
     scope?: ImportScope;
-  }): Promise<{ batchId: string; results: NormalizedRowResult[] }> {
+  }): Promise<{ batchId: string; results: NormalizedRowResult[]; roomDecode?: RoomDecodeSummary }> {
     const rawRows = parseFile(params.fileType, params.content);
     if (rawRows.length === 0) {
       throw new Error('Fichier vide ou illisible: aucune ligne détectée');
@@ -176,6 +177,40 @@ export class ImportService {
       };
     });
 
+    // Une ligne = une ou plusieurs chambres : chaque chambre devient une reservation (grille de tarifs de l'hotel).
+    let roomDecode: RoomDecodeSummary | undefined;
+    if (mapping.options?.inferRoomsFromRate && mapping.targetEntityType === 'reservation') {
+      const { data: types } = await this.supabase.from('room_types').select('id, name, base_rate').eq('hotel_id', params.ctx.hotelId);
+      const grid = buildRateGrid((types ?? []).map((t: any) => ({ id: t.id, name: t.name, base_rate: Number(t.base_rate) })));
+      if (grid.rates.length > 0) {
+        roomDecode = { exact: 0, ambiguous: 0, unknown: 0, rooms: 0 };
+        const expanded: NormalizedRowResult[] = [];
+        for (const r of results) {
+          const n = r.normalized as Record<string, any> | null;
+          if (r.status !== 'valid' || !n || typeof n.arrival_date !== 'string' || typeof n.departure_date !== 'string') {
+            expanded.push(r);
+            continue;
+          }
+          const { status, rooms } = expandLine({ arrival: n.arrival_date, departure: n.departure_date, total: n.total_amount ?? null, grid });
+          roomDecode[status] += 1;
+          roomDecode.rooms += rooms.length;
+          for (const room of rooms) {
+            expanded.push({
+              ...r,
+              normalized: {
+                ...n,
+                confirmation_number: rooms.length === 1 ? n.confirmation_number : `${n.confirmation_number}-${room.roomIndex}`,
+                total_amount: room.totalAmount,
+                room_type_id: room.roomTypeId ?? undefined,
+                special_requests: room.note,
+              },
+            });
+          }
+        }
+        results.splice(0, results.length, ...expanded);
+      }
+    }
+
     const rowsToInsert = results.map((r) => ({
       tenant_id: params.ctx.tenantId,
       import_batch_id: batch.id,
@@ -204,7 +239,7 @@ export class ImportService {
       })
       .eq('id', batch.id);
 
-    return { batchId: batch.id, results };
+    return { batchId: batch.id, results, roomDecode };
   }
 
   /**
