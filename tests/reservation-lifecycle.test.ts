@@ -1008,3 +1008,46 @@ describe('TASK 37 — annulation d\'un import', () => {
     await supabase.from('guests').delete().eq('tenant_id', tenantId).eq('first_name', `Rb${stamp}`);
   });
 });
+
+describe('TASK 40 — alertes statistiques de l\'audit : baisses seulement', () => {
+  it("signale une baisse brutale d'ADR, ne signale pas une hausse, et reste muet sur une periode trop courte", async () => {
+    const { data, error } = await supabase.rpc('create_demo_hotel', {
+      p_tenant_name: `VITEST Audit ${Date.now()}`, p_hotel_name: 'VITEST Hotel Audit', p_room_count: 40, p_guest_count: 30, p_reservation_count: 300, p_currency: 'EUR',
+    });
+    expect(error).toBeNull();
+    const d = data[0];
+    const iso = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
+    const start = iso(-30);
+    const end = iso(-1);
+    const setRevenue = async (day: string, amount: number) =>
+      supabase.from('folio_lines').update({ amount }).eq('hotel_id', d.out_hotel_id).eq('line_type', 'room_charge').gte('posted_at', `${day}T00:00:00Z`).lt('posted_at', `${day}T23:59:59.999Z`);
+    const statFindings = async (day: string) => {
+      const { data: f } = await supabase.from('audit_findings').select('category, title').eq('hotel_id', d.out_hotel_id).eq('status', 'open').eq('business_date', day).in('category', ['adr', 'revpar']);
+      return f ?? [];
+    };
+    try {
+      await supabase.from('folio_lines').update({ amount: 100 }).eq('hotel_id', d.out_hotel_id).eq('line_type', 'room_charge'); // tarif uniforme
+      await supabase.rpc('compute_kpi_snapshots', { p_hotel_id: d.out_hotel_id, p_start_date: start, p_end_date: end });
+      const { data: days } = await supabase.from('kpi_daily_snapshots').select('business_date, rooms_occupied').eq('hotel_id', d.out_hotel_id)
+        .gte('business_date', start).lte('business_date', end).gt('rooms_occupied', 3).order('business_date');
+      expect((days ?? []).length).toBeGreaterThan(10);
+      const day = days![5].business_date as string;
+
+      await setRevenue(day, 0.01); // baisse brutale
+      await supabase.rpc('run_hotel_audit', { p_hotel_id: d.out_hotel_id, p_start_date: start, p_end_date: end });
+      const low = await statFindings(day);
+      expect(low.some((f) => f.category === 'adr' && f.title === 'ADR anormalement bas')).toBe(true);
+
+      await setRevenue(day, 1000); // hausse : plus d'alerte
+      await supabase.rpc('run_hotel_audit', { p_hotel_id: d.out_hotel_id, p_start_date: start, p_end_date: end });
+      expect(await statFindings(day)).toHaveLength(0);
+
+      await setRevenue(day, 0.01); // periode de 3 jours seulement : moins de 7 jours occupes, rien
+      await supabase.rpc('run_hotel_audit', { p_hotel_id: d.out_hotel_id, p_start_date: iso(-3), p_end_date: end });
+      const { data: short } = await supabase.from('audit_findings').select('id').eq('hotel_id', d.out_hotel_id).eq('status', 'open').in('category', ['adr', 'revpar']);
+      expect(short ?? []).toHaveLength(0);
+    } finally {
+      await supabase.rpc('delete_demo_tenant', { p_tenant_id: d.out_tenant_id });
+    }
+  });
+});
