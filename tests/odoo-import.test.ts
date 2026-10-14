@@ -253,15 +253,16 @@ describe('Import Odoo : chambres déduites du tarif', () => {
     const { results, roomDecode } = await stageWith([
       ['B1', 'DUPONT Marie', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 636000], // 2 nuits x 318 000 = 2 x Supérieur
       ['B2', 'MARTIN Paul', '2026-10-20 12:00:00', '2026-10-21 11:00:00', 108000],   // 1 Standard
-      ['B3', 'LEROY Anne', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 300000],    // 150 000 : hors grille
+      ['B3', 'LEROY Anne', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 280000],    // 140 000 : hors grille
+      ['B4', 'PETIT Jean', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 300000],    // 150 000 = Supérieur 159 000 remisé
     ]);
     const valid = results.filter((r) => r.status === 'valid').map((r) => r.normalized as any);
-    expect(valid).toHaveLength(4); // 2 + 1 + 1
+    expect(valid).toHaveLength(5); // 2 + 1 + 1 + 1
     const dupont = valid.filter((v) => v.guest_last_name === 'DUPONT');
     expect(dupont).toHaveLength(2);
     expect(dupont.every((v) => v.room_type_id === 't-sup')).toBe(true);
     expect(dupont.reduce((s: number, v: any) => s + v.total_amount, 0)).toBe(636000);
-    expect(new Set(valid.map((v) => v.confirmation_number)).size).toBe(4); // numéros tous distincts
+    expect(new Set(valid.map((v) => v.confirmation_number)).size).toBe(5); // numéros tous distincts
     expect(dupont[0].confirmation_number.endsWith('-1') && dupont[1].confirmation_number.endsWith('-2')).toBe(true);
     const martin = valid.find((v) => v.guest_last_name === 'MARTIN');
     expect(martin).toMatchObject({ room_type_id: 't-std', total_amount: 108000 });
@@ -269,7 +270,10 @@ describe('Import Odoo : chambres déduites du tarif', () => {
     const leroy = valid.find((v) => v.guest_last_name === 'LEROY');
     expect(leroy.room_type_id).toBeUndefined();
     expect(leroy.special_requests).toMatch(/hors grille/);
-    expect(roomDecode).toEqual({ exact: 2, ambiguous: 0, unknown: 1, rooms: 4 });
+    const petit = valid.find((v) => v.guest_last_name === 'PETIT');
+    expect(petit).toMatchObject({ room_type_id: 't-sup', total_amount: 300000 });
+    expect(petit.special_requests).toMatch(/tarif remisé \(Supérieur 159\s000 remisé à 150\s000/);
+    expect(roomDecode).toEqual({ exact: 2, discounted: 1, ambiguous: 0, unknown: 1, rooms: 5 });
   });
 
   it('un réimport du même fichier donne les mêmes numéros', async () => {

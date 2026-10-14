@@ -12,6 +12,7 @@ const TYPES: RoomTypeRate[] = [
   { id: 't-twin', name: 'Twin', base_rate: 108000 },
 ];
 const grid = buildRateGrid(TYPES);
+const gridRemise = buildRateGrid(TYPES, { discountDivisor: 1.06 });
 
 describe('Grille de tarifs', () => {
   it('garde un seul type par tarif, le premier par ordre alphabétique', () => {
@@ -62,6 +63,44 @@ describe('Décodage du prix par nuit', () => {
     expect(decodeRooms(0, grid).status).toBe('unknown');
     expect(decodeRooms(NaN, grid).status).toBe('unknown');
     expect(decodeRooms(159000, buildRateGrid([])).status).toBe('unknown');
+  });
+});
+
+describe('Tarifs remisés (tarif public / 1,06)', () => {
+  it('calcule les tarifs remisés arrondis au millier', () => {
+    expect([...gridRemise.baseOfDiscounted.keys()].sort((a, b) => a - b)).toEqual([102000, 122000, 150000, 166000, 182000]);
+    expect(gridRemise.baseOfDiscounted.get(150000)).toBe(159000);
+  });
+  it('lit 150 000, 102 000, 166 000 et 182 000 comme le même type remisé', () => {
+    const cas: [number, string][] = [[150000, 'Supérieur'], [102000, 'Standard'], [166000, 'Supérieur avec balcon'], [182000, 'Familiale']];
+    for (const [v, nom] of cas) {
+      const d = decodeRooms(v, gridRemise);
+      expect(d.status, String(v)).toBe('discounted');
+      expect(d.rooms).toHaveLength(1);
+      expect(d.rooms[0].type.name).toBe(nom);
+    }
+  });
+  it('lit 2 chambres toutes remisées : 300 000 = 2 x 150 000', () => {
+    const d = decodeRooms(300000, gridRemise);
+    expect(d.status).toBe('discounted');
+    expect(d.rooms.map((r) => r.type.name)).toEqual(['Supérieur', 'Supérieur']);
+  });
+  it('ne mélange pas tarif public et remisé : 258 000 (= 150 000 remisé + 108 000 public) reste hors grille', () => {
+    expect(decodeRooms(258000, gridRemise).status).toBe('unknown');
+  });
+  it('le tarif public l\'emporte et ne change jamais : aucune lecture exacte existante ne devient remisée', () => {
+    for (const v of [108000, 159000, 216000, 318000, 267000]) {
+      expect(decodeRooms(v, gridRemise).status, String(v)).toBe(decodeRooms(v, grid).status);
+    }
+  });
+  it('sans diviseur, 150 000 reste hors grille', () => {
+    expect(decodeRooms(150000, grid).status).toBe('unknown');
+  });
+  it('expandLine : note explicite et total conservé', () => {
+    const r = expandLine({ arrival: '2026-04-28', departure: '2026-04-30', total: 300000, grid: gridRemise });
+    expect(r.status).toBe('discounted');
+    expect(r.rooms[0]).toMatchObject({ roomTypeId: 't-sup', totalAmount: 300000 });
+    expect(r.rooms[0].note).toMatch(/tarif remisé \(Supérieur 159\s000 remisé à 150\s000 par nuit\)/);
   });
 });
 
