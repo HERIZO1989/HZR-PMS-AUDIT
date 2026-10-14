@@ -181,9 +181,11 @@ export class ImportService {
     let roomDecode: RoomDecodeSummary | undefined;
     if (mapping.options?.inferRoomsFromRate && mapping.targetEntityType === 'reservation') {
       const { data: types } = await this.supabase.from('room_types').select('id, name, base_rate').eq('hotel_id', params.ctx.hotelId);
-      const grid = buildRateGrid((types ?? []).map((t: any) => ({ id: t.id, name: t.name, base_rate: Number(t.base_rate) })));
+      const grid = buildRateGrid((types ?? []).map((t: any) => ({ id: t.id, name: t.name, base_rate: Number(t.base_rate) })), {
+        discountDivisor: mapping.options?.discountedRateDivisor,
+      });
       if (grid.rates.length > 0) {
-        roomDecode = { exact: 0, ambiguous: 0, unknown: 0, rooms: 0 };
+        roomDecode = { exact: 0, discounted: 0, ambiguous: 0, unknown: 0, rooms: 0 };
         const expanded: NormalizedRowResult[] = [];
         for (const r of results) {
           const n = r.normalized as Record<string, any> | null;

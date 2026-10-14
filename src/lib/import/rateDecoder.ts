@@ -7,6 +7,8 @@
  *  - une seule combinaison  -> 'exact'      : lecture fiable ;
  *  - plusieurs              -> 'ambiguous'  : on retient celle qui a le moins de chambres, a verifier ;
  *  - aucune (tarif negocie) -> 'unknown'    : une chambre de type inconnu, a verifier.
+ * Tarifs remises : quand un diviseur est fourni (ex. 1,06 a Anjary : 159 000 -> 150 000, 108 000 -> 102 000), une ligne dont TOUTES les chambres
+ * sont au tarif remise d'un type est lue 'discounted' (essayee seulement si aucune lecture au tarif public n'existe, sans melanger les deux).
  * C'est une deduction, pas une lecture : une chambre vendue a un tarif special peut etre decodee a tort.
  */
 export interface RoomTypeRate {
@@ -22,13 +24,17 @@ export interface RateGrid {
   typeByRate: Map<number, RoomTypeRate>;
   /** Montant (en centimes) -> combinaisons (listes de tarifs triees) qui le produisent. */
   sums: Map<number, number[][]>;
+  /** Idem pour les tarifs remises : combinaisons de chambres TOUTES remisees. */
+  discountedSums: Map<number, number[][]>;
+  /** Tarif remise -> tarif public d'origine. */
+  baseOfDiscounted: Map<number, number>;
 }
 
-export type DecodeStatus = 'exact' | 'ambiguous' | 'unknown';
+export type DecodeStatus = 'exact' | 'discounted' | 'ambiguous' | 'unknown';
 
 export interface DecodedRooms {
   status: DecodeStatus;
-  rooms: { rate: number; type: RoomTypeRate }[];
+  rooms: { rate: number; type: RoomTypeRate; publicRate?: number }[];
   alternatives: number;
 }
 
@@ -36,48 +42,84 @@ const MAX_ROOMS = 20;
 const MAX_SOLUTIONS_PER_SUM = 30;
 const cents = (v: number) => Math.round(v * 100);
 
-export function buildRateGrid(types: RoomTypeRate[], maxRooms: number = MAX_ROOMS): RateGrid {
+export function buildRateGrid(types: RoomTypeRate[], options: { maxRooms?: number; discountDivisor?: number } = {}): RateGrid {
+  const maxRooms = options.maxRooms ?? MAX_ROOMS;
   const usable = types.filter((t) => Number(t.base_rate) > 0).map((t) => ({ ...t, base_rate: Number(t.base_rate) }));
   const typeByRate = new Map<number, RoomTypeRate>();
   for (const t of [...usable].sort((a, b) => a.name.localeCompare(b.name, 'fr'))) {
     if (!typeByRate.has(t.base_rate)) typeByRate.set(t.base_rate, t);
   }
   const rates = [...typeByRate.keys()].sort((a, b) => a - b);
-  const sums = new Map<number, number[][]>();
-
-  const walk = (start: number, count: number, total: number, combo: number[]) => {
-    if (count > 0) {
-      const key = cents(total);
-      const list = sums.get(key) ?? [];
-      if (list.length < MAX_SOLUTIONS_PER_SUM) list.push([...combo]);
-      sums.set(key, list);
-    }
-    if (count === maxRooms) return;
-    for (let i = start; i < rates.length; i++) {
-      combo.push(rates[i]);
-      walk(i, count + 1, total + rates[i], combo);
-      combo.pop();
-    }
+  const walkInto = (target: Map<number, number[][]>, values: number[]) => {
+    const walk = (start: number, count: number, total: number, combo: number[]) => {
+      if (count > 0) {
+        const key = cents(total);
+        const list = target.get(key) ?? [];
+        if (list.length < MAX_SOLUTIONS_PER_SUM) list.push([...combo]);
+        target.set(key, list);
+      }
+      if (count === maxRooms) return;
+      for (let i = start; i < values.length; i++) {
+        combo.push(values[i]);
+        walk(i, count + 1, total + values[i], combo);
+        combo.pop();
+      }
+    };
+    if (values.length > 0) walk(0, 0, 0, []);
   };
-  if (rates.length > 0) walk(0, 0, 0, []);
-  return { rates, typeByRate, sums };
+
+  const sums = new Map<number, number[][]>();
+  walkInto(sums, rates);
+
+  // Tarifs remises : tarif public / diviseur, arrondi au millier ; ignores s'ils tombent sur un tarif public existant.
+  const baseOfDiscounted = new Map<number, number>();
+  const divisor = options.discountDivisor;
+  if (divisor && divisor > 1) {
+    for (const base of rates) {
+      const discounted = Math.round(base / divisor / 1000) * 1000;
+      if (discounted > 0 && !typeByRate.has(discounted) && !baseOfDiscounted.has(discounted)) baseOfDiscounted.set(discounted, base);
+    }
+  }
+  const discountedRates = [...baseOfDiscounted.keys()].sort((a, b) => a - b);
+  const discountedSums = new Map<number, number[][]>();
+  walkInto(discountedSums, discountedRates);
+  return { rates, typeByRate, sums, discountedSums, baseOfDiscounted };
 }
+
+const lookup = (sums: Map<number, number[][]>, perNight: number): number[][] | undefined => {
+  const center = cents(perNight);
+  let found = sums.get(center);
+  for (let delta = 1; delta <= 100 && !found; delta++) found = sums.get(center - delta) ?? sums.get(center + delta);
+  return found && found.length > 0 ? found : undefined;
+};
 
 /** Decode un prix par nuit (tolerance de 1 unite de monnaie, pour les divisions non entieres). */
 export function decodeRooms(perNight: number, grid: RateGrid): DecodedRooms {
   if (!Number.isFinite(perNight) || perNight <= 0 || grid.rates.length === 0) return { status: 'unknown', rooms: [], alternatives: 0 };
-  const center = cents(perNight);
-  let found = grid.sums.get(center);
-  if (!found) {
-    for (let delta = 1; delta <= 100 && !found; delta++) found = grid.sums.get(center - delta) ?? grid.sums.get(center + delta);
+
+  const publicFound = lookup(grid.sums, perNight);
+  if (publicFound) {
+    const best = [...publicFound].sort((a, b) => a.length - b.length)[0];
+    return {
+      status: publicFound.length === 1 ? 'exact' : 'ambiguous',
+      rooms: best.map((rate) => ({ rate, type: grid.typeByRate.get(rate)! })),
+      alternatives: publicFound.length,
+    };
   }
-  if (!found || found.length === 0) return { status: 'unknown', rooms: [], alternatives: 0 };
-  const best = [...found].sort((a, b) => a.length - b.length)[0];
-  return {
-    status: found.length === 1 ? 'exact' : 'ambiguous',
-    rooms: best.map((rate) => ({ rate, type: grid.typeByRate.get(rate)! })),
-    alternatives: found.length,
-  };
+
+  const discountedFound = lookup(grid.discountedSums, perNight);
+  if (discountedFound) {
+    const best = [...discountedFound].sort((a, b) => a.length - b.length)[0];
+    return {
+      status: discountedFound.length === 1 ? 'discounted' : 'ambiguous',
+      rooms: best.map((rate) => {
+        const publicRate = grid.baseOfDiscounted.get(rate)!;
+        return { rate, publicRate, type: grid.typeByRate.get(publicRate)! };
+      }),
+      alternatives: discountedFound.length,
+    };
+  }
+  return { status: 'unknown', rooms: [], alternatives: 0 };
 }
 
 /** Nombre de nuits entre deux dates AAAA-MM-JJ. */
@@ -127,7 +169,9 @@ export function expandLine(params: { arrival: string; departure: string; total: 
     allocated += amount;
     const label = decoded.status === 'exact'
       ? `chambre ${i + 1}/${count} déduite du tarif (${room.type.name}, ${fmt(room.rate)} par nuit)`
-      : `lecture ambiguë (${decoded.alternatives} combinaisons possibles), la plus petite retenue : chambre ${i + 1}/${count} ${room.type.name}, à vérifier`;
+      : decoded.status === 'discounted'
+        ? `chambre ${i + 1}/${count} déduite d'un tarif remisé (${room.type.name} ${fmt(room.publicRate ?? room.rate)} remisé à ${fmt(room.rate)} par nuit)`
+        : `lecture ambiguë (${decoded.alternatives} combinaisons possibles), la plus petite retenue : chambre ${i + 1}/${count} ${room.type.name}, à vérifier`;
     return { roomIndex: i + 1, roomCount: count, roomTypeId: room.type.id, totalAmount: amount, note: `[Import Odoo] ${label}` };
   });
   return { status: decoded.status, rooms };

@@ -15,7 +15,7 @@ interface StageResult {
   validRows: number;
   invalidRows: number;
   skippedRows?: number;
-  roomDecode?: { exact: number; ambiguous: number; unknown: number; rooms: number } | null;
+  roomDecode?: { exact: number; discounted?: number; ambiguous: number; unknown: number; rooms: number } | null;
   preview: PreviewRow[];
 }
 
@@ -171,7 +171,7 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
 
           {result.roomDecode && (
             <p className="mb-4 rounded-sm bg-steel-tint px-4 py-3 text-sm text-steel-dim">
-              Chambres déduites du tarif : {result.roomDecode.exact} lignes lues avec certitude, {result.roomDecode.ambiguous} ambiguës et{' '}
+              Chambres déduites du tarif : {result.roomDecode.exact} lignes lues avec certitude, {result.roomDecode.discounted ?? 0} au tarif remisé, {result.roomDecode.ambiguous} ambiguës et{' '}
               {result.roomDecode.unknown} hors grille (une chambre de type inconnu, à vérifier). {result.roomDecode.rooms} réservations seront créées.
             </p>
           )}

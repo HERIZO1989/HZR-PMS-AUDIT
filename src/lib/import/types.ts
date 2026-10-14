@@ -36,6 +36,8 @@ export interface MappingConfig {
     allowDayUse?: boolean;
     /** Deduit le nombre et le type de chambres de chaque ligne a partir du prix par nuit et de la grille de tarifs de l'hotel (voir rateDecoder.ts). */
     inferRoomsFromRate?: boolean;
+    /** Tarifs remises : tarif public / diviseur (ex. 1,06 a Anjary). Voir rateDecoder.ts. */
+    discountedRateDivisor?: number;
   };
 }
 
@@ -48,6 +50,7 @@ export interface ImportScope {
 /** Bilan du decodage des chambres, par ligne source. */
 export interface RoomDecodeSummary {
   exact: number;
+  discounted: number;
   ambiguous: number;
   unknown: number;
   /** Nombre de reservations (chambres) creees a partir des lignes valides. */
