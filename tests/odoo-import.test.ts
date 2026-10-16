@@ -276,6 +276,17 @@ describe('Import Odoo : chambres déduites du tarif', () => {
     expect(roomDecode).toEqual({ exact: 2, discounted: 1, ambiguous: 0, unknown: 1, rooms: 5 });
   });
 
+  it("relit les nuits selon les heures quand l'écart de dates ne colle pas à la grille, et le signale à vérifier", async () => {
+    // 13/01 13h -> 20/01 12h : 7 nuits par les dates (hors grille), 6 nuits par les heures = 2 x Standard à 108 000
+    const { results, roomDecode } = await stageWith([['B9', 'DURAND Luc', '2026-01-13 13:00:00', '2026-01-20 12:00:00', 1296000]]);
+    const valid = results.filter((r) => r.status === 'valid').map((r) => r.normalized as any);
+    expect(valid).toHaveLength(2);
+    expect(valid.every((v) => v.room_type_id === 't-std')).toBe(true);
+    expect(valid.reduce((s: number, v: any) => s + v.total_amount, 0)).toBe(1296000);
+    expect(valid[0].special_requests).toMatch(/nuits recomptées selon les heures/);
+    expect(roomDecode).toEqual({ exact: 0, discounted: 0, ambiguous: 1, unknown: 0, rooms: 2 });
+  });
+
   it('un réimport du même fichier donne les mêmes numéros', async () => {
     const lines: [string, string, string, string, number][] = [['B1', 'DUPONT Marie', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 636000]];
     const a = (await stageWith(lines)).results.map((r) => (r.normalized as any).confirmation_number);
