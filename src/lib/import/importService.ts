@@ -5,7 +5,7 @@ import { applyTransform } from './normalizers';
 import { validateEntity } from './validators';
 import { buildOdooConfirmationNumber, isOdooGroupRow, normalizeKey, splitOdooName } from './odoo';
 import type { ImportScope, MappingConfig, NormalizedRowResult, RoomDecodeSummary, SourceFileType, SourceSystem, TargetEntityType } from './types';
-import { buildRateGrid, expandLine } from './rateDecoder';
+import { buildRateGrid, expandLine, nightsFromTimes } from './rateDecoder';
 
 export interface ImportContext {
   tenantId: string;
@@ -193,7 +193,14 @@ export class ImportService {
             expanded.push(r);
             continue;
           }
-          const { status, rooms } = expandLine({ arrival: n.arrival_date, departure: n.departure_date, total: n.total_amount ?? null, grid });
+          const times = nightsFromTimes(
+            r.raw[mapping.fields.find((f) => f.targetField === 'arrival_date')?.sourceField ?? ''],
+            r.raw[mapping.fields.find((f) => f.targetField === 'departure_date')?.sourceField ?? '']
+          );
+          const { status, rooms } = expandLine({
+            arrival: n.arrival_date, departure: n.departure_date, total: n.total_amount ?? null, grid,
+            alternateNights: times ? [times.floor, times.ceil] : undefined,
+          });
           roomDecode[status] += 1;
           roomDecode.rooms += rooms.length;
           for (const room of rooms) {

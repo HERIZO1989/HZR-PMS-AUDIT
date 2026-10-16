@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRateGrid, decodeRooms, expandLine, nightsBetween, type RoomTypeRate } from '../src/lib/import/rateDecoder';
+import { buildRateGrid, decodeRooms, expandLine, nightsBetween, nightsFromTimes, type RoomTypeRate } from '../src/lib/import/rateDecoder';
 
 // Types et tarifs de base d'Anjary (TTC, Ar).
 const TYPES: RoomTypeRate[] = [
@@ -142,5 +142,35 @@ describe('Expansion d\'une ligne en chambres', () => {
   it('calcule les nuits entre deux dates', () => {
     expect(nightsBetween('2026-04-28', '2026-05-02')).toBe(4);
     expect(nightsBetween('2026-04-28', 'n/a')).toBe(0);
+  });
+});
+
+describe('Nuits comptées selon les heures (lecture de secours)', () => {
+  it('calcule les nuits aux arrondis inférieur et supérieur, et refuse les dates sans heure', () => {
+    expect(nightsFromTimes('2026-01-13 13:00:00', '2026-01-20 12:00:00')).toEqual({ floor: 6, ceil: 7 });
+    expect(nightsFromTimes('2026-01-13 12:00:00', '2026-01-14 11:00:00')).toEqual({ floor: 1, ceil: 1 });
+    expect(nightsFromTimes('2026-01-13', '2026-01-20')).toBeNull();
+    expect(nightsFromTimes('n/a', '2026-01-20 12:00:00')).toBeNull();
+    expect(nightsFromTimes('2026-01-20 12:00:00', '2026-01-13 13:00:00')).toBeNull();
+  });
+  it('relit une ligne hors grille avec les nuits des heures : ambiguë, jamais exacte, total conservé', () => {
+    // 13/01 13h -> 20/01 12h : 7 nuits par écart de dates (1 296 000 / 7 hors grille), 6 nuits par les heures (216 000 = 2 x 108 000)
+    const base = { arrival: '2026-01-13', departure: '2026-01-20', total: 1296000, grid };
+    expect(expandLine(base).status).toBe('unknown');
+    const r = expandLine({ ...base, alternateNights: [6, 7] });
+    expect(r.status).toBe('ambiguous');
+    expect(r.rooms).toHaveLength(2);
+    expect(r.rooms.reduce((s, x) => s + x.totalAmount, 0)).toBe(1296000);
+    expect(r.rooms[0].note).toMatch(/nuits recomptées selon les heures.*6 au lieu de 7.*à vérifier/);
+  });
+  it("ne touche pas une ligne déjà lue par l'écart de dates", () => {
+    const r = expandLine({ arrival: '2026-04-28', departure: '2026-04-30', total: 216000, grid, alternateNights: [1, 2] });
+    expect(r.status).toBe('exact');
+    expect(r.rooms[0].note).toMatch(/déduite du tarif/);
+  });
+  it('reste hors grille quand aucune lecture de secours ne colle', () => {
+    const r = expandLine({ arrival: '2026-04-28', departure: '2026-04-30', total: 280000, grid, alternateNights: [1, 2] });
+    expect(r.status).toBe('unknown');
+    expect(r.rooms[0].note).toMatch(/hors grille/);
   });
 });

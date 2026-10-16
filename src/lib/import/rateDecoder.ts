@@ -130,6 +130,24 @@ export function nightsBetween(arrival: string, departure: string): number {
   return Math.round((d - a) / 86400000);
 }
 
+/**
+ * Nombre de nuits selon les HEURES d'arrivee et de depart (dates-heures « AAAA-MM-JJ HH:MM[:SS] » ou ISO), arrondi inferieur et superieur.
+ * Sert uniquement de lecture de secours : sur l'export d'Anjary, certains montants ne collent a la grille que si les nuits sont comptees
+ * ainsi (ex. entree 13h00, sortie 12h00 le 7e jour -> 6 nuits facturees et non 7). Retourne null si les heures sont absentes ou illisibles.
+ */
+export function nightsFromTimes(arrivalRaw: unknown, departureRaw: unknown): { floor: number; ceil: number } | null {
+  const parse = (v: unknown): number | null => {
+    const m = String(v ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!m || m[4] === undefined) return null; // pas d'heure : pas de lecture de secours
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] ?? 0));
+  };
+  const a = parse(arrivalRaw);
+  const d = parse(departureRaw);
+  if (a === null || d === null || d <= a) return null;
+  const days = (d - a) / 86400000;
+  return { floor: Math.max(1, Math.floor(days)), ceil: Math.max(1, Math.ceil(days)) };
+}
+
 export interface ExpandedRoom {
   roomIndex: number;
   roomCount: number;
@@ -144,7 +162,7 @@ const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
  * Transforme une ligne (dates + montant total) en une liste de chambres. La somme des montants est EXACTEMENT le montant de la ligne
  * (la derniere chambre absorbe l'arrondi). Retourne 1 chambre de type inconnu quand rien ne se decode.
  */
-export function expandLine(params: { arrival: string; departure: string; total: number | null; grid: RateGrid }): { status: DecodeStatus; rooms: ExpandedRoom[] } {
+export function expandLine(params: { arrival: string; departure: string; total: number | null; grid: RateGrid; alternateNights?: number[] }): { status: DecodeStatus; rooms: ExpandedRoom[] } {
   const { arrival, departure, grid } = params;
   const total = Number(params.total ?? 0);
   const nights = nightsBetween(arrival, departure);
@@ -156,7 +174,22 @@ export function expandLine(params: { arrival: string; departure: string; total: 
   if (!(total > 0)) return single('[Import Odoo] montant absent : nombre et type de chambres non déterminés, à vérifier');
 
   const perNight = total / nights;
-  const decoded = decodeRooms(perNight, grid);
+  let decoded = decodeRooms(perNight, grid);
+  let usedNights = nights;
+  let recount = false;
+  if (decoded.status === 'unknown') {
+    // Lecture de secours : nuits comptees selon les heures. Jamais « exacte » : c'est une deduction, toujours a verifier.
+    for (const alt of [...new Set(params.alternateNights ?? [])]) {
+      if (!(alt > 0) || alt === nights) continue;
+      const attempt = decodeRooms(total / alt, grid);
+      if (attempt.status !== 'unknown') {
+        decoded = { ...attempt, status: 'ambiguous' };
+        usedNights = alt;
+        recount = true;
+        break;
+      }
+    }
+  }
   if (decoded.status === 'unknown') {
     return single(`[Import Odoo] tarif de ${fmt(perNight)} par nuit hors grille : 1 chambre de type non déterminé, à vérifier`);
   }
@@ -165,13 +198,15 @@ export function expandLine(params: { arrival: string; departure: string; total: 
   let allocated = 0;
   const rooms: ExpandedRoom[] = decoded.rooms.map((room, i) => {
     const isLast = i === count - 1;
-    const amount = isLast ? Math.round((total - allocated) * 100) / 100 : Math.round(room.rate * nights * 100) / 100;
+    const amount = isLast ? Math.round((total - allocated) * 100) / 100 : Math.round(room.rate * usedNights * 100) / 100;
     allocated += amount;
     const label = decoded.status === 'exact'
       ? `chambre ${i + 1}/${count} déduite du tarif (${room.type.name}, ${fmt(room.rate)} par nuit)`
       : decoded.status === 'discounted'
         ? `chambre ${i + 1}/${count} déduite d'un tarif remisé (${room.type.name} ${fmt(room.publicRate ?? room.rate)} remisé à ${fmt(room.rate)} par nuit)`
-        : `lecture ambiguë (${decoded.alternatives} combinaisons possibles), la plus petite retenue : chambre ${i + 1}/${count} ${room.type.name}, à vérifier`;
+        : recount
+          ? `nuits recomptées selon les heures d'arrivée et de départ (${usedNights} au lieu de ${nights}) : chambre ${i + 1}/${count} ${room.type.name} (${fmt(room.rate)} par nuit), à vérifier`
+          : `lecture ambiguë (${decoded.alternatives} combinaisons possibles), la plus petite retenue : chambre ${i + 1}/${count} ${room.type.name}, à vérifier`;
     return { roomIndex: i + 1, roomCount: count, roomTypeId: room.type.id, totalAmount: amount, note: `[Import Odoo] ${label}` };
   });
   return { status: decoded.status, rooms };
