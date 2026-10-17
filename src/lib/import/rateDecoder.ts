@@ -42,7 +42,12 @@ const MAX_ROOMS = 20;
 const MAX_SOLUTIONS_PER_SUM = 30;
 const cents = (v: number) => Math.round(v * 100);
 
-export function buildRateGrid(types: RoomTypeRate[], options: { maxRooms?: number; discountDivisor?: number } = {}): RateGrid {
+const norm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+export function buildRateGrid(
+  types: RoomTypeRate[],
+  options: { maxRooms?: number; discountDivisor?: number; negotiated?: { typeName: string; rate: number }[] } = {}
+): RateGrid {
   const maxRooms = options.maxRooms ?? MAX_ROOMS;
   const usable = types.filter((t) => Number(t.base_rate) > 0).map((t) => ({ ...t, base_rate: Number(t.base_rate) }));
   const typeByRate = new Map<number, RoomTypeRate>();
@@ -79,6 +84,12 @@ export function buildRateGrid(types: RoomTypeRate[], options: { maxRooms?: numbe
       const discounted = Math.round(base / divisor / 1000) * 1000;
       if (discounted > 0 && !typeByRate.has(discounted) && !baseOfDiscounted.has(discounted)) baseOfDiscounted.set(discounted, base);
     }
+  }
+  // Tarifs negocies confirmes : tarif exact par nuit rattache a un type (par son nom, sans tenir compte des accents ni de la casse).
+  for (const n of options.negotiated ?? []) {
+    const type = usable.find((t) => norm(t.name) === norm(n.typeName));
+    const rate = Number(n.rate);
+    if (type && rate > 0 && !typeByRate.has(rate) && !baseOfDiscounted.has(rate)) baseOfDiscounted.set(rate, type.base_rate);
   }
   const discountedRates = [...baseOfDiscounted.keys()].sort((a, b) => a - b);
   const discountedSums = new Map<number, number[][]>();
@@ -162,10 +173,13 @@ const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR');
  * Transforme une ligne (dates + montant total) en une liste de chambres. La somme des montants est EXACTEMENT le montant de la ligne
  * (la derniere chambre absorbe l'arrondi). Retourne 1 chambre de type inconnu quand rien ne se decode.
  */
-export function expandLine(params: { arrival: string; departure: string; total: number | null; grid: RateGrid; alternateNights?: number[] }): { status: DecodeStatus; rooms: ExpandedRoom[] } {
+export function expandLine(params: { arrival: string; departure: string; total: number | null; grid: RateGrid; alternateNights?: number[]; dayUseSupplements?: { typeName: string; amount: number }[]; halfNight?: boolean; sameDayAsOneNight?: boolean; knownRateErrors?: { rate: number; note?: string }[] }): { status: DecodeStatus; rooms: ExpandedRoom[] } {
   const { arrival, departure, grid } = params;
   const total = Number(params.total ?? 0);
-  const nights = nightsBetween(arrival, departure);
+  let nights = nightsBetween(arrival, departure);
+  // Sejour a la journee (meme date d'arrivee et de depart) : le montant est le prix d'UNE journee, lu comme une nuit.
+  const sameDay = nights === 0 && arrival === departure && !!params.sameDayAsOneNight && total > 0;
+  if (sameDay) nights = 1;
   const single = (note: string): { status: DecodeStatus; rooms: ExpandedRoom[] } => ({
     status: 'unknown',
     rooms: [{ roomIndex: 1, roomCount: 1, roomTypeId: null, totalAmount: total, note }],
@@ -174,12 +188,54 @@ export function expandLine(params: { arrival: string; departure: string; total: 
   if (!(total > 0)) return single('[Import Odoo] montant absent : nombre et type de chambres non déterminés, à vérifier');
 
   const perNight = total / nights;
+  // Erreur de tarif connue dans le systeme source : jamais decodee, a corriger a la source.
+  const knownError = (params.knownRateErrors ?? []).find((e) => Math.abs(e.rate - perNight) <= 1);
+  if (knownError) {
+    return single(`[Import Odoo] tarif de ${fmt(perNight)} par nuit : ${knownError.note ?? 'erreur de tarif connue dans le système source'}, type de chambre non déterminé, à corriger`);
+  }
   let decoded = decodeRooms(perNight, grid);
   let usedNights = nights;
   let recount = false;
+  let dayUse = 0;
+  let halfNight = false;
+  let pureDayUse = 0;
+  if (decoded.status === 'unknown' && nights === 1) {
+    // Day use seul : le montant vaut le supplement d'un type (Standard 60 000, Superieur 90 000), pour 1 a 3 chambres. A verifier.
+    outer: for (const sup of params.dayUseSupplements ?? []) {
+      const type = [...grid.typeByRate.values()].find((t) => norm(t.name) === norm(sup.typeName));
+      if (!type || !(sup.amount > 0)) continue;
+      for (let k = 1; k <= 3; k++) {
+        if (Math.abs(total - k * sup.amount) <= 1 + k) {
+          decoded = { status: 'ambiguous', rooms: Array.from({ length: k }, () => ({ rate: sup.amount, type })), alternatives: 1 };
+          pureDayUse = sup.amount;
+          break outer;
+        }
+      }
+    }
+  }
+  if (decoded.status === 'unknown' && nights === 1 && !sameDay) {
+    // Arrivee anticipee : UNE chambre au tarif de son type + supplement unique de ce type (day use). Toujours a verifier.
+    for (const sup of params.dayUseSupplements ?? []) {
+      if (!(sup.amount > 0) || !(total > sup.amount)) continue;
+      const attempt = decodeRooms(total - sup.amount, grid);
+      if (attempt.status !== 'unknown' && attempt.rooms.length === 1 && norm(attempt.rooms[0].type.name) === norm(sup.typeName)) {
+        decoded = { ...attempt, status: 'ambiguous' };
+        dayUse = sup.amount;
+        break;
+      }
+    }
+    // Demi-nuitee (50 %) : le montant vaut la moitie du tarif d'UNE chambre. Toujours a verifier.
+    if (decoded.status === 'unknown' && params.halfNight) {
+      const attempt = decodeRooms(total * 2, grid);
+      if (attempt.status !== 'unknown' && attempt.rooms.length === 1) {
+        decoded = { ...attempt, status: 'ambiguous' };
+        halfNight = true;
+      }
+    }
+  }
   if (decoded.status === 'unknown') {
     // Lecture de secours : nuits comptees selon les heures. Jamais « exacte » : c'est une deduction, toujours a verifier.
-    for (const alt of [...new Set(params.alternateNights ?? [])]) {
+    for (const alt of sameDay ? [] : [...new Set(params.alternateNights ?? [])]) {
       if (!(alt > 0) || alt === nights) continue;
       const attempt = decodeRooms(total / alt, grid);
       if (attempt.status !== 'unknown') {
@@ -191,7 +247,9 @@ export function expandLine(params: { arrival: string; departure: string; total: 
     }
   }
   if (decoded.status === 'unknown') {
-    return single(`[Import Odoo] tarif de ${fmt(perNight)} par nuit hors grille : 1 chambre de type non déterminé, à vérifier`);
+    return single(sameDay
+      ? `[Import Odoo] séjour à la journée : prix de ${fmt(perNight)} hors grille, 1 chambre de type non déterminé, à vérifier`
+      : `[Import Odoo] tarif de ${fmt(perNight)} par nuit hors grille : 1 chambre de type non déterminé, à vérifier`);
   }
 
   const count = decoded.rooms.length;
@@ -203,11 +261,19 @@ export function expandLine(params: { arrival: string; departure: string; total: 
     const label = decoded.status === 'exact'
       ? `chambre ${i + 1}/${count} déduite du tarif (${room.type.name}, ${fmt(room.rate)} par nuit)`
       : decoded.status === 'discounted'
-        ? `chambre ${i + 1}/${count} déduite d'un tarif remisé (${room.type.name} ${fmt(room.publicRate ?? room.rate)} remisé à ${fmt(room.rate)} par nuit)`
-        : recount
-          ? `nuits recomptées selon les heures d'arrivée et de départ (${usedNights} au lieu de ${nights}) : chambre ${i + 1}/${count} ${room.type.name} (${fmt(room.rate)} par nuit), à vérifier`
-          : `lecture ambiguë (${decoded.alternatives} combinaisons possibles), la plus petite retenue : chambre ${i + 1}/${count} ${room.type.name}, à vérifier`;
-    return { roomIndex: i + 1, roomCount: count, roomTypeId: room.type.id, totalAmount: amount, note: `[Import Odoo] ${label}` };
+        ? room.publicRate && room.rate > room.publicRate
+          ? `chambre ${i + 1}/${count} déduite d'un tarif public sans remise (${room.type.name} ${fmt(room.rate)} par nuit, grille ${fmt(room.publicRate)} déjà remisée de 15 %)`
+          : `chambre ${i + 1}/${count} déduite d'un tarif remisé (${room.type.name} ${fmt(room.publicRate ?? room.rate)} remisé à ${fmt(room.rate)} par nuit)`
+        : pureDayUse
+          ? `day use seul (${fmt(pureDayUse)} par chambre) : chambre ${i + 1}/${count} ${room.type.name}, à vérifier`
+          : halfNight
+          ? `demi-nuitée (50 %) : chambre ${i + 1}/${count} ${room.type.name} (${fmt(room.rate)} par nuit, moitié facturée), à vérifier`
+          : dayUse
+          ? `arrivée anticipée : ${fmt(dayUse)} de day use retiré du montant (chambre ${i + 1}/${count} ${room.type.name}, ${fmt(room.rate)} par nuit), à vérifier`
+          : recount
+            ? `nuits recomptées selon les heures d'arrivée et de départ (${usedNights} au lieu de ${nights}) : chambre ${i + 1}/${count} ${room.type.name} (${fmt(room.rate)} par nuit), à vérifier`
+            : `lecture ambiguë (${decoded.alternatives} combinaisons possibles), la plus petite retenue : chambre ${i + 1}/${count} ${room.type.name}, à vérifier`;
+    return { roomIndex: i + 1, roomCount: count, roomTypeId: room.type.id, totalAmount: amount, note: `[Import Odoo] ${label}${sameDay ? ' (séjour à la journée : prix de la journée lu comme une nuit)' : ''}` };
   });
   return { status: decoded.status, rooms };
 }
