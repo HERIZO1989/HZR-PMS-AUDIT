@@ -38,6 +38,16 @@ export interface MappingConfig {
     inferRoomsFromRate?: boolean;
     /** Tarifs remises : tarif public / diviseur (ex. 1,06 a Anjary). Voir rateDecoder.ts. */
     discountedRateDivisor?: number;
+    /** Tarifs negocies confirmes, en plus du diviseur : tarif exact par nuit rattache a un type de chambre (ex. Superieur a 132 000 = -30 % sur le tarif public). */
+    negotiatedRates?: { typeName: string; rate: number; label?: string }[];
+    /** Supplement unique d'arrivee anticipee (day use) par type de chambre, ex. Standard 60 000 et Superieur 90 000 a Anjary : sejour d'UNE nuit = tarif de la chambre + supplement. */
+    dayUseSupplements?: { typeName: string; amount: number }[];
+    /** Demi-nuitee (50 %) : un sejour d'UNE nuit dont le montant vaut la moitie du tarif d'une chambre (ex. 66 000 = 132 000 / 2, 79 500 = 159 000 / 2). */
+    halfNight?: boolean;
+    /** Sejour a la journee (arrivee et depart le meme jour) : le montant est lu comme le prix d'UNE journee, au tarif d'une ou plusieurs chambres (ex. 216 000 = 2 Standard a 108 000). */
+    sameDayAsOneNight?: boolean;
+    /** Prix par nuit connus pour etre des erreurs de tarif dans le systeme source : jamais decodes, signales a corriger a la source (ex. 185 520 a Anjary). */
+    knownRateErrors?: { rate: number; note?: string }[];
   };
 }
 

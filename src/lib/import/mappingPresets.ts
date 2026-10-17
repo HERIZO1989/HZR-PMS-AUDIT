@@ -54,7 +54,24 @@ export const MAPPING_PRESETS: Record<SourceSystem, MappingConfig | null> = {
       { sourceField: 'Status', targetField: 'status' },
     ],
     statusMap: ODOO_STATUS_MAP,
-    options: { skipGroupRows: true, uniqueConfirmationNumber: true, splitNameLastFirst: true, allowDayUse: true, inferRoomsFromRate: true, discountedRateDivisor: 1.06 },
+    options: { skipGroupRows: true, uniqueConfirmationNumber: true, splitNameLastFirst: true, allowDayUse: true, inferRoomsFromRate: true, discountedRateDivisor: 1.06,
+      // Grille deja a -15 % : remises sur le tarif public. 150 000 = Superieur -20 %, 102 000 = Standard -20 % (couverts par le diviseur),
+      // 132 000 = Superieur -30 %, 138 000 et 146 000 = Superieur avec balcon -30 % (regles du gerant, 2026-10-16).
+      negotiatedRates: [
+        { typeName: 'Supérieur', rate: 132000, label: '-30 %' },
+        { typeName: 'Supérieur avec balcon', rate: 138000, label: '-30 %' },
+        { typeName: 'Supérieur avec balcon', rate: 146000, label: '-30 %' },
+        { typeName: 'Supérieur', rate: 186000, label: 'tarif public sans remise' },
+        { typeName: 'Familiale', rate: 189000, label: 'sans taxe ni vignette (6 000)' },
+      ],
+      // Day use : Standard 60 000, Superieur 90 000. Seul (60 000, 90 000) ou avec la nuitee (168 000 = 108 000 + 60 000 ; 249 000 = 159 000 + 90 000), sejour d'une nuit.
+      dayUseSupplements: [{ typeName: 'Standard', amount: 60000 }, { typeName: 'Supérieur', amount: 90000 }],
+      // Demi-nuitee : 66 000 = 132 000 / 2 ; 79 500 = 159 000 / 2.
+      halfNight: true,
+      // 185 520 par nuit : erreur de tarif dans Odoo, a corriger a la source (jamais decode).
+      knownRateErrors: [{ rate: 185520, note: 'erreur de tarif dans Odoo' }],
+      // Sejour a la journee : 216 000 = 2 Standard a 108 000 (regle du gerant).
+      sameDayAsOneNight: true },
   },
   fidelio: null,
   generic_csv: null,

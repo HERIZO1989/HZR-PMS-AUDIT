@@ -174,3 +174,157 @@ describe('Nuits comptées selon les heures (lecture de secours)', () => {
     expect(r.rooms[0].note).toMatch(/hors grille/);
   });
 });
+
+describe("Règles confirmées du gérant d'Anjary (tarifs négociés, day use, demi-nuitée)", () => {
+  const negotiated = [{ typeName: 'supérieur', rate: 132000 }, { typeName: 'Supérieur avec balcon', rate: 138000 }];
+  const gridAnjary = buildRateGrid(TYPES, { discountDivisor: 1.06, negotiated });
+  const supplements = [{ typeName: 'Standard', amount: 60000 }, { typeName: 'Supérieur', amount: 90000 }];
+  const night = { arrival: '2026-05-10', departure: '2026-05-11', grid: gridAnjary, dayUseSupplements: supplements, halfNight: true };
+  const three = { arrival: '2026-05-10', departure: '2026-05-13', grid: gridAnjary };
+
+  it('lit 132 000 comme Supérieur -30 % (nom sans casse ni accents) et 138 000 comme Supérieur avec balcon -30 %', () => {
+    const a = expandLine({ ...three, total: 132000 * 3 });
+    expect(a.status).toBe('discounted');
+    expect(a.rooms[0].roomTypeId).toBe('t-sup');
+    expect(a.rooms[0].note).toMatch(/remisé à 132/);
+    const b = expandLine({ ...three, total: 138000 * 3 });
+    expect(b.status).toBe('discounted');
+    expect(b.rooms[0].roomTypeId).toBe('t-bal');
+  });
+  it('garde 150 000 (Supérieur -20 %) et 102 000 (Standard -20 %) lus par le diviseur', () => {
+    expect(expandLine({ ...three, total: 150000 * 3 }).rooms[0].roomTypeId).toBe('t-sup');
+    expect(expandLine({ ...three, total: 102000 * 3 }).rooms[0].roomTypeId).toBe('t-std');
+  });
+  it("ignore un tarif négocié dont le type n'existe pas ou qui est déjà un tarif public", () => {
+    const g = buildRateGrid(TYPES, { negotiated: [{ typeName: 'Suite', rate: 250000 }, { typeName: 'Supérieur', rate: 159000 }] });
+    expect(g.baseOfDiscounted.size).toBe(0);
+  });
+  it('lit 168 000 sur une nuit comme Standard 108 000 + 60 000 de day use : ambigu, total conservé', () => {
+    const r = expandLine({ ...night, total: 168000 });
+    expect(r.status).toBe('ambiguous');
+    expect(r.rooms).toHaveLength(1);
+    expect(r.rooms[0].roomTypeId).toBe('t-std');
+    expect(r.rooms[0].totalAmount).toBe(168000);
+    expect(r.rooms[0].note).toMatch(/arrivée anticipée.*60[\s\u202f\u00a0]000.*à vérifier/);
+  });
+  it('lit 249 000 sur une nuit comme Supérieur 159 000 + 90 000 de day use', () => {
+    const r = expandLine({ ...night, total: 249000 });
+    expect(r.status).toBe('ambiguous');
+    expect(r.rooms[0].roomTypeId).toBe('t-sup');
+    expect(r.rooms[0].totalAmount).toBe(249000);
+  });
+  it("n'applique le day use qu'à une nuit et au type du supplément (pas de 60 000 sur un Supérieur)", () => {
+    expect(expandLine({ ...night, departure: '2026-05-12', total: 168000 }).status).toBe('unknown');
+    // 219 000 = 159 000 + 60 000 : le supplément Standard ne s'applique pas à un Supérieur
+    expect(expandLine({ ...night, total: 219000 }).status).toBe('unknown');
+    expect(expandLine({ ...night, dayUseSupplements: undefined, total: 168000, halfNight: false }).status).toBe('unknown');
+  });
+  it('lit une demi-nuitée : 66 000 = 132 000 / 2 (Supérieur -30 %) et 79 500 = 159 000 / 2', () => {
+    const a = expandLine({ ...night, total: 66000 });
+    expect(a.status).toBe('ambiguous');
+    expect(a.rooms).toHaveLength(1);
+    expect(a.rooms[0].roomTypeId).toBe('t-sup');
+    expect(a.rooms[0].totalAmount).toBe(66000);
+    expect(a.rooms[0].note).toMatch(/demi-nuitée \(50 %\).*à vérifier/);
+    expect(expandLine({ ...night, total: 79500 }).rooms[0].roomTypeId).toBe('t-sup');
+    // option désactivée ou séjour de 2 nuits : rien n'est deviné
+    expect(expandLine({ ...night, halfNight: false, total: 66000 }).status).toBe('unknown');
+    expect(expandLine({ ...night, departure: '2026-05-12', total: 66000 }).status).toBe('unknown');
+  });
+  it('ne change pas une ligne déjà lue au tarif public, avec toutes les options activées', () => {
+    expect(expandLine({ ...night, total: 108000 }).status).toBe('exact');
+  });
+});
+
+describe("Séjours à la journée d'Anjary (216 000 = 2 Standard à 108 000)", () => {
+  const day = { arrival: '2026-05-10', departure: '2026-05-10', grid: buildRateGrid(TYPES, { discountDivisor: 1.06 }), sameDayAsOneNight: true };
+
+  it('lit 216 000 un même jour comme 2 chambres Standard à 108 000, total conservé', () => {
+    const r = expandLine({ ...day, total: 216000 });
+    expect(r.status).toBe('exact');
+    expect(r.rooms).toHaveLength(2);
+    expect(r.rooms.every((x) => x.roomTypeId === 't-std')).toBe(true);
+    expect(r.rooms.reduce((s, x) => s + x.totalAmount, 0)).toBe(216000);
+    expect(r.rooms[0].note).toMatch(/séjour à la journée/);
+  });
+  it('lit 108 000 et 159 000 comme une chambre Standard et une chambre Supérieur', () => {
+    expect(expandLine({ ...day, total: 108000 }).rooms[0].roomTypeId).toBe('t-std');
+    expect(expandLine({ ...day, total: 159000 }).rooms[0].roomTypeId).toBe('t-sup');
+  });
+  it('laisse un prix hors grille à vérifier, sans deviner', () => {
+    const r = expandLine({ ...day, total: 280000 });
+    expect(r.status).toBe('unknown');
+    expect(r.rooms[0].roomTypeId).toBeNull();
+    expect(r.rooms[0].note).toMatch(/séjour à la journée.*hors grille.*à vérifier/);
+  });
+  it("ne change rien sans l'option, ni quand le départ précède l'arrivée", () => {
+    const off = expandLine({ ...day, sameDayAsOneNight: false, total: 216000 });
+    expect(off.status).toBe('unknown');
+    expect(off.rooms[0].note).toMatch(/séjour à la journée : type de chambre non déterminé/);
+    expect(expandLine({ ...day, departure: '2026-05-09', total: 216000 }).status).toBe('unknown');
+  });
+});
+
+describe("Day use seul d'Anjary (Standard 60 000, Supérieur 90 000) et balcon -30 % à 146 000", () => {
+  const g = buildRateGrid(TYPES, { discountDivisor: 1.06, negotiated: [{ typeName: 'Supérieur avec balcon', rate: 138000 }, { typeName: 'Supérieur avec balcon', rate: 146000 }] });
+  const sup = [{ typeName: 'Standard', amount: 60000 }, { typeName: 'Supérieur', amount: 90000 }];
+  const night = { arrival: '2026-05-10', departure: '2026-05-11', grid: g, dayUseSupplements: sup };
+  const day = { arrival: '2026-05-10', departure: '2026-05-10', grid: g, dayUseSupplements: sup, sameDayAsOneNight: true };
+
+  it('lit 146 000 et 138 000 comme Supérieur avec balcon remisé de 30 %', () => {
+    const a = expandLine({ arrival: '2026-05-10', departure: '2026-05-12', total: 146000 * 2, grid: g });
+    expect(a.status).toBe('discounted');
+    expect(a.rooms[0].roomTypeId).toBe('t-bal');
+    expect(expandLine({ arrival: '2026-05-10', departure: '2026-05-12', total: 138000 * 2, grid: g }).rooms[0].roomTypeId).toBe('t-bal');
+  });
+  it('lit 60 000 comme un day use Standard et 90 000 comme un day use Supérieur (une nuit ou un même jour)', () => {
+    for (const base of [night, day]) {
+      const a = expandLine({ ...base, total: 60000 });
+      expect(a.status).toBe('ambiguous');
+      expect(a.rooms[0].roomTypeId).toBe('t-std');
+      expect(a.rooms[0].totalAmount).toBe(60000);
+      expect(a.rooms[0].note).toMatch(/day use seul.*à vérifier/);
+      expect(expandLine({ ...base, total: 90000 }).rooms[0].roomTypeId).toBe('t-sup');
+    }
+  });
+  it('lit 120 000 comme 2 day use Standard, et laisse un montant voisin hors grille', () => {
+    const a = expandLine({ ...night, total: 120000 });
+    expect(a.rooms).toHaveLength(2);
+    expect(a.rooms.every((x) => x.roomTypeId === 't-std')).toBe(true);
+    expect(expandLine({ ...night, total: 65000 }).status).toBe('unknown');
+  });
+  it("n'applique pas le day use seul sur plusieurs nuits ni sans supplément configuré", () => {
+    expect(expandLine({ ...night, departure: '2026-05-13', total: 60000 }).status).toBe('unknown');
+    expect(expandLine({ ...night, dayUseSupplements: undefined, total: 60000 }).status).toBe('unknown');
+  });
+});
+
+describe("Tarif public sans remise, Familiale sans taxe ni vignette et erreur de tarif connue d'Anjary", () => {
+  const g = buildRateGrid(TYPES, { discountDivisor: 1.06, negotiated: [{ typeName: 'Supérieur', rate: 186000 }, { typeName: 'Familiale', rate: 189000 }] });
+  const stay = { arrival: '2026-05-10', departure: '2026-05-12', grid: g, knownRateErrors: [{ rate: 185520, note: 'erreur de tarif dans Odoo' }] };
+
+  it('lit 186 000 comme un Supérieur au tarif public sans remise', () => {
+    const r = expandLine({ ...stay, total: 186000 * 2 });
+    expect(r.status).toBe('discounted');
+    expect(r.rooms[0].roomTypeId).toBe('t-sup');
+    expect(r.rooms[0].note).toMatch(/tarif public sans remise/);
+    expect(r.rooms[0].note).not.toMatch(/remisé à/);
+  });
+  it('lit 189 000 comme une Familiale (sans taxe ni vignette)', () => {
+    const r = expandLine({ ...stay, total: 189000 * 2 });
+    expect(r.rooms[0].roomTypeId).toBe('t-fam');
+  });
+  it('ne décode jamais 185 520 : erreur de tarif connue, à corriger, total conservé', () => {
+    const r = expandLine({ ...stay, total: 185520 * 2 });
+    expect(r.status).toBe('unknown');
+    expect(r.rooms).toHaveLength(1);
+    expect(r.rooms[0].roomTypeId).toBeNull();
+    expect(r.rooms[0].totalAmount).toBe(185520 * 2);
+    expect(r.rooms[0].note).toMatch(/erreur de tarif dans Odoo.*à corriger/);
+  });
+  it('sans option, 185 520 reste simplement hors grille', () => {
+    const r = expandLine({ ...stay, knownRateErrors: undefined, total: 185520 * 2 });
+    expect(r.status).toBe('unknown');
+    expect(r.rooms[0].note).toMatch(/hors grille/);
+  });
+});

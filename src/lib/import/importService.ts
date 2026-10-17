@@ -183,6 +183,7 @@ export class ImportService {
       const { data: types } = await this.supabase.from('room_types').select('id, name, base_rate').eq('hotel_id', params.ctx.hotelId);
       const grid = buildRateGrid((types ?? []).map((t: any) => ({ id: t.id, name: t.name, base_rate: Number(t.base_rate) })), {
         discountDivisor: mapping.options?.discountedRateDivisor,
+        negotiated: mapping.options?.negotiatedRates?.map((n) => ({ typeName: n.typeName, rate: n.rate })),
       });
       if (grid.rates.length > 0) {
         roomDecode = { exact: 0, discounted: 0, ambiguous: 0, unknown: 0, rooms: 0 };
@@ -200,6 +201,10 @@ export class ImportService {
           const { status, rooms } = expandLine({
             arrival: n.arrival_date, departure: n.departure_date, total: n.total_amount ?? null, grid,
             alternateNights: times ? [times.floor, times.ceil] : undefined,
+            dayUseSupplements: mapping.options?.dayUseSupplements,
+            halfNight: mapping.options?.halfNight,
+            sameDayAsOneNight: mapping.options?.sameDayAsOneNight,
+            knownRateErrors: mapping.options?.knownRateErrors,
           });
           roomDecode[status] += 1;
           roomDecode.rooms += rooms.length;
