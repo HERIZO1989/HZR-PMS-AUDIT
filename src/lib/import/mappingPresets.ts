@@ -70,6 +70,8 @@ export const MAPPING_PRESETS: Record<SourceSystem, MappingConfig | null> = {
       halfNight: true,
       // 185 520 par nuit : erreur de tarif dans Odoo, a corriger a la source (jamais decode).
       knownRateErrors: [{ rate: 185520, note: 'erreur de tarif dans Odoo' }],
+      // 200 000 par jour = location d'une salle de reunion (Baobab ou Vanilla), pas une chambre : ligne ignoree.
+      nonStayRates: [{ rate: 200000, reason: 'Location de salle de réunion (Baobab ou Vanilla), hors hébergement : ignorée' }],
       // Sejour a la journee : 216 000 = 2 Standard a 108 000 (regle du gerant).
       sameDayAsOneNight: true },
   },

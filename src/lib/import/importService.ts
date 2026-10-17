@@ -5,7 +5,7 @@ import { applyTransform } from './normalizers';
 import { validateEntity } from './validators';
 import { buildOdooConfirmationNumber, isOdooGroupRow, normalizeKey, splitOdooName } from './odoo';
 import type { ImportScope, MappingConfig, NormalizedRowResult, RoomDecodeSummary, SourceFileType, SourceSystem, TargetEntityType } from './types';
-import { buildRateGrid, expandLine, nightsFromTimes } from './rateDecoder';
+import { buildRateGrid, expandLine, nightsBetween, nightsFromTimes } from './rateDecoder';
 
 export interface ImportContext {
   tenantId: string;
@@ -165,6 +165,14 @@ export class ImportService {
           rowNumber, raw, normalized: null, status: 'skipped' as const,
           errors: [`Séjour terminé avant le ${params.scope.departureFrom} (hors période importée)`],
         };
+      }
+      // Prestation qui n'est pas de l'hebergement (ex. location de salle) : ignoree, jamais creee comme sejour.
+      const arrivalDate = typeof normalized.arrival_date === 'string' ? normalized.arrival_date : null;
+      const totalAmount = typeof normalized.total_amount === 'number' ? normalized.total_amount : null;
+      if (mapping.options?.nonStayRates?.length && arrivalDate && departure && totalAmount) {
+        const perNight = totalAmount / Math.max(1, nightsBetween(arrivalDate, departure));
+        const hit = mapping.options.nonStayRates.find((n) => Math.abs(n.rate - perNight) <= 1);
+        if (hit) return { rowNumber, raw, normalized: null, status: 'skipped' as const, errors: [hit.reason] };
       }
       const businessErrors = validateEntity(mapping.targetEntityType, normalized);
       const errors = [...mappingErrors, ...businessErrors];

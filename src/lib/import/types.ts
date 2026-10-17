@@ -48,6 +48,8 @@ export interface MappingConfig {
     sameDayAsOneNight?: boolean;
     /** Prix par nuit connus pour etre des erreurs de tarif dans le systeme source : jamais decodes, signales a corriger a la source (ex. 185 520 a Anjary). */
     knownRateErrors?: { rate: number; note?: string }[];
+    /** Prix par nuit qui ne sont PAS de l'hebergement (ex. location de salle de reunion a Anjary : 200 000) : ligne ignoree, jamais importee comme sejour. */
+    nonStayRates?: { rate: number; reason: string }[];
   };
 }
 
