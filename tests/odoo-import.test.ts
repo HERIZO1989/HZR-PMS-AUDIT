@@ -287,6 +287,21 @@ describe('Import Odoo : chambres déduites du tarif', () => {
     expect(roomDecode).toEqual({ exact: 0, discounted: 0, ambiguous: 1, unknown: 0, rooms: 2 });
   });
 
+  it("ignore une location de salle de réunion (200 000 par jour) au lieu de créer un séjour, sans toucher aux vraies chambres", async () => {
+    const { results } = await stageWith([
+      ['B1', 'GIZ Prodecid', '2026-10-20 08:00:00', '2026-10-21 08:00:00', 200000],    // 1 jour de salle
+      ['B2', 'CROIX ROUGE', '2026-10-20 08:00:00', '2026-10-23 08:00:00', 600000],     // 3 jours de salle : 200 000 par jour
+      ['B3', 'MARTIN Paul', '2026-10-20 12:00:00', '2026-10-21 11:00:00', 108000],     // une vraie chambre Standard
+      ['B4', 'LEROY Anne', '2026-10-20 12:00:00', '2026-10-21 11:00:00', 199000],      // proche mais différent : n'est pas une salle
+    ]);
+    const skipped = results.filter((r) => r.status === 'skipped');
+    expect(skipped).toHaveLength(2);
+    expect(skipped.every((r) => r.normalized === null && /salle de réunion.*hors hébergement/.test(r.errors[0]))).toBe(true);
+    expect(skipped.map((r) => r.rowNumber).length).toBe(2);
+    const valid = results.filter((r) => r.status === 'valid').map((r) => r.normalized as any);
+    expect(valid.map((v) => v.guest_last_name).sort()).toEqual(['LEROY', 'MARTIN']);
+  });
+
   it('un réimport du même fichier donne les mêmes numéros', async () => {
     const lines: [string, string, string, string, number][] = [['B1', 'DUPONT Marie', '2026-10-20 12:00:00', '2026-10-22 11:00:00', 636000]];
     const a = (await stageWith(lines)).results.map((r) => (r.normalized as any).confirmation_number);
