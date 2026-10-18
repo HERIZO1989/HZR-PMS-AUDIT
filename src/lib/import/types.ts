@@ -50,6 +50,8 @@ export interface MappingConfig {
     knownRateErrors?: { rate: number; note?: string }[];
     /** Prix par nuit qui ne sont PAS de l'hebergement (ex. location de salle de reunion a Anjary : 200 000) : ligne ignoree, jamais importee comme sejour. */
     nonStayRates?: { rate: number; reason: string }[];
+    /** Location facturee par JOUR CALENDAIRE (ex. salle de reunion a Anjary : 200 000 par jour, arrivee tot le matin, depart en fin d'apres-midi) : montant = tarif x nombre de jours (arrivee et depart inclus). Ligne ignoree. */
+    dayRentalRates?: { dailyRate: number; maxArrivalHour: number; minDepartureHour: number; reason: string }[];
   };
 }
 

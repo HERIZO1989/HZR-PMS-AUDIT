@@ -5,7 +5,7 @@ import { applyTransform } from './normalizers';
 import { validateEntity } from './validators';
 import { buildOdooConfirmationNumber, isOdooGroupRow, normalizeKey, splitOdooName } from './odoo';
 import type { ImportScope, MappingConfig, NormalizedRowResult, RoomDecodeSummary, SourceFileType, SourceSystem, TargetEntityType } from './types';
-import { buildRateGrid, expandLine, nightsBetween, nightsFromTimes } from './rateDecoder';
+import { buildRateGrid, expandLine, isDayRental, nightsBetween, nightsFromTimes } from './rateDecoder';
 
 export interface ImportContext {
   tenantId: string;
@@ -173,6 +173,13 @@ export class ImportService {
         const perNight = totalAmount / Math.max(1, nightsBetween(arrivalDate, departure));
         const hit = mapping.options.nonStayRates.find((n) => Math.abs(n.rate - perNight) <= 1);
         if (hit) return { rowNumber, raw, normalized: null, status: 'skipped' as const, errors: [hit.reason] };
+      }
+      // Location facturee par jour calendaire (ex. salle) : ignoree, jamais creee comme sejour.
+      if (mapping.options?.dayRentalRates?.length && totalAmount) {
+        const rawArrival = raw[mapping.fields.find((f) => f.targetField === 'arrival_date')?.sourceField ?? ''];
+        const rawDeparture = raw[mapping.fields.find((f) => f.targetField === 'departure_date')?.sourceField ?? ''];
+        const rental = mapping.options.dayRentalRates.find((rule) => isDayRental(rawArrival, rawDeparture, totalAmount, rule));
+        if (rental) return { rowNumber, raw, normalized: null, status: 'skipped' as const, errors: [rental.reason] };
       }
       const businessErrors = validateEntity(mapping.targetEntityType, normalized);
       const errors = [...mappingErrors, ...businessErrors];

@@ -159,6 +159,28 @@ export function nightsFromTimes(arrivalRaw: unknown, departureRaw: unknown): { f
   return { floor: Math.max(1, Math.floor(days)), ceil: Math.max(1, Math.ceil(days)) };
 }
 
+/**
+ * Location facturee par jour calendaire (ex. salle de reunion) : montant = tarif journalier x nombre de jours calendaires (arrivee et depart inclus),
+ * avec une arrivee tot (<= maxArrivalHour) et un depart tard (>= minDepartureHour). Exige les heures dans les dates brutes.
+ */
+export function isDayRental(
+  arrivalRaw: unknown,
+  departureRaw: unknown,
+  total: number | null | undefined,
+  rule: { dailyRate: number; maxArrivalHour: number; minDepartureHour: number }
+): boolean {
+  if (!total || !(rule.dailyRate > 0)) return false;
+  const parse = (v: unknown) => {
+    const m = String(v ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    return m ? { day: Date.UTC(+m[1], +m[2] - 1, +m[3]), hour: +m[4] } : null;
+  };
+  const a = parse(arrivalRaw);
+  const d = parse(departureRaw);
+  if (!a || !d || d.day < a.day) return false;
+  const days = Math.round((d.day - a.day) / 86400000) + 1;
+  return a.hour <= rule.maxArrivalHour && d.hour >= rule.minDepartureHour && Math.abs(total - rule.dailyRate * days) <= 1;
+}
+
 export interface ExpandedRoom {
   roomIndex: number;
   roomCount: number;
