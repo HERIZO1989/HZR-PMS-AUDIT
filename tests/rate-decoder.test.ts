@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildRateGrid, decodeRooms, expandLine, nightsBetween, nightsFromTimes, type RoomTypeRate } from '../src/lib/import/rateDecoder';
+import { buildRateGrid, decodeRooms, expandLine, isDayRental, nightsBetween, nightsFromTimes, type RoomTypeRate } from '../src/lib/import/rateDecoder';
 
 // Types et tarifs de base d'Anjary (TTC, Ar).
 const TYPES: RoomTypeRate[] = [
@@ -326,5 +326,28 @@ describe("Tarif public sans remise, Familiale sans taxe ni vignette et erreur de
     const r = expandLine({ ...stay, knownRateErrors: undefined, total: 185520 * 2 });
     expect(r.status).toBe('unknown');
     expect(r.rooms[0].note).toMatch(/hors grille/);
+  });
+});
+
+describe("Salle de réunion facturée par jour calendaire (200 000 par jour)", () => {
+  const rule = { dailyRate: 200000, maxArrivalHour: 9, minDepartureHour: 15 };
+  it('reconnaît 1, 2, 3 et 5 jours de salle (arrivée tôt, départ tard)', () => {
+    expect(isDayRental('2026-04-23 07:00:00', '2026-04-23 17:00:00', 200000, rule)).toBe(true);
+    expect(isDayRental('2026-06-11 08:00:00', '2026-06-12 17:00:00', 400000, rule)).toBe(true);
+    expect(isDayRental('2026-04-28 08:00:00', '2026-04-30 17:00:00', 600000, rule)).toBe(true);
+    expect(isDayRental('2026-07-20 08:00:00', '2026-07-24 17:00:00', 1000000, rule)).toBe(true);
+  });
+  it("ne prend pas une chambre : arrivée à 13 h ou départ à 11 h, même si le montant est un multiple de 200 000", () => {
+    expect(isDayRental('2026-04-06 14:00:00', '2026-04-08 11:00:00', 600000, rule)).toBe(false);
+    expect(isDayRental('2026-03-01 13:00:00', '2026-03-05 11:00:00', 600000, rule)).toBe(false);
+  });
+  it("exige que le montant corresponde exactement au nombre de jours", () => {
+    expect(isDayRental('2026-06-11 08:00:00', '2026-06-12 17:00:00', 600000, rule)).toBe(false);
+    expect(isDayRental('2026-06-11 08:00:00', '2026-06-11 17:00:00', 108000, rule)).toBe(false);
+  });
+  it('refuse sans heures, sans montant ou avec un départ avant l\'arrivée', () => {
+    expect(isDayRental('2026-06-11', '2026-06-12', 400000, rule)).toBe(false);
+    expect(isDayRental('2026-06-11 08:00:00', '2026-06-12 17:00:00', null, rule)).toBe(false);
+    expect(isDayRental('2026-06-12 08:00:00', '2026-06-11 17:00:00', 200000, rule)).toBe(false);
   });
 });

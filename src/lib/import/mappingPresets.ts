@@ -72,6 +72,8 @@ export const MAPPING_PRESETS: Record<SourceSystem, MappingConfig | null> = {
       knownRateErrors: [{ rate: 185520, note: 'erreur de tarif dans Odoo' }],
       // 200 000 par jour = location d'une salle de reunion (Baobab ou Vanilla), pas une chambre : ligne ignoree.
       nonStayRates: [{ rate: 200000, reason: 'Location de salle de réunion (Baobab ou Vanilla), hors hébergement : ignorée' }],
+      // Salle de reunion facturee 200 000 PAR JOUR CALENDAIRE (arrivee <= 9 h, depart >= 15 h) : 400 000 = 2 jours, 600 000 = 3 jours, 1 000 000 = 5 jours. Ligne ignoree.
+      dayRentalRates: [{ dailyRate: 200000, maxArrivalHour: 9, minDepartureHour: 15, reason: 'Location de salle de réunion (Baobab ou Vanilla), 200 000 par jour, hors hébergement : ignorée' }],
       // Sejour a la journee : 216 000 = 2 Standard a 108 000 (regle du gerant).
       sameDayAsOneNight: true },
   },
