@@ -10,6 +10,7 @@ const ITEMS = [
   { href: '/guests', label: 'Clients' },
   { href: '/housekeeping', label: 'Housekeeping' },
   { href: '/night-audit', label: 'Night Audit' },
+  { href: '/expenses', label: 'Dépenses' },
   { href: '/imports', label: 'Imports' },
   { href: '/billing', label: 'Facturation' },
 ];
