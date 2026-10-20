@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   const raw = readExpenseRows(Buffer.from(await file.arrayBuffer()), file.name);
   if (raw.length === 0) {
-    return NextResponse.json({ error: 'Aucune ligne de dépense trouvée (colonnes attendues : Date, Catégorie, Montant TTC…)' }, { status: 400 });
+    return NextResponse.json({ error: 'Aucune ligne de dépense trouvée (colonnes attendues : Date, Catégorie, Montant TTC… ou export Odoo des bons de commande)' }, { status: 400 });
   }
   if (raw.length > MAX_EXPENSE_ROWS) {
     return NextResponse.json({ error: `Fichier trop volumineux (${MAX_EXPENSE_ROWS} lignes maximum)` }, { status: 400 });
@@ -32,16 +32,20 @@ export async function POST(req: NextRequest) {
   const prepared = prepareExpenseRows(raw);
   const autoApprove = hasPermission(session, 'expenses.approve');
   const nowIso = new Date().toISOString();
-  const toInsert = prepared.valid.map((v) => ({
-    ...v,
-    tenant_id: session.tenantId,
-    hotel_id: session.hotelId,
-    created_by: session.staffUserId,
-    status: autoApprove ? 'approved' : 'pending',
-    approved_by: autoApprove ? session.staffUserId : null,
-    approved_at: autoApprove ? nowIso : null,
-    idempotency_key: createHash('sha1').update(expenseFingerprint(v)).digest('hex'),
-  }));
+  const toInsert = prepared.valid.map(({ sourceKey, needsReview, ...v }) => {
+    // Les lignes « à vérifier » (montant douteux) restent en attente : elles ne comptent dans aucun total tant qu'un valideur ne les a pas approuvées.
+    const approve = autoApprove && !needsReview;
+    return {
+      ...v,
+      tenant_id: session.tenantId,
+      hotel_id: session.hotelId,
+      created_by: session.staffUserId,
+      status: approve ? 'approved' : 'pending',
+      approved_by: approve ? session.staffUserId : null,
+      approved_at: approve ? nowIso : null,
+      idempotency_key: createHash('sha1').update(sourceKey ?? expenseFingerprint(v)).digest('hex'),
+    };
+  });
 
   const supabase = getSupabaseAdmin();
   let inserted = 0;
@@ -63,5 +67,8 @@ export async function POST(req: NextRequest) {
     invalid: prepared.invalid.slice(0, 50),
     invalidCount: prepared.invalid.length,
     status: autoApprove ? 'approved' : 'pending',
+    format: prepared.format,
+    skippedByStatus: prepared.skippedByStatus,
+    needsReviewCount: prepared.needsReviewCount,
   });
 }
