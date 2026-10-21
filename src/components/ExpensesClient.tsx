@@ -35,6 +35,9 @@ interface ImportResult {
   duplicatesInFile: number;
   invalidCount: number;
   invalid: { row: number; errors: string[] }[];
+  format?: 'journal' | 'odoo_po';
+  skippedByStatus?: Record<string, number>;
+  needsReviewCount?: number;
 }
 
 const CATEGORY_LABELS = Object.fromEntries(EXPENSE_CATEGORIES.map((c) => [c.code, c.label]));
@@ -208,7 +211,7 @@ export function ExpensesClient({ hotelId, currencyCode }: { hotelId: string; cur
 
       <div className="panel mb-6 flex flex-col gap-3 p-5">
         <h2 className="font-display text-lg">Importer le journal des dépenses</h2>
-        <p className="text-sm text-black/70">Chargez le classeur « Anjary_depenses_et_marge.xlsx » rempli (feuille « Journal des dépenses ») ou un CSV avec les mêmes colonnes. Recharger le même fichier ne crée pas de doublon.</p>
+        <p className="text-sm text-black/70">Chargez le classeur « Anjary_depenses_et_marge.xlsx » rempli (feuille « Journal des dépenses »), un CSV avec les mêmes colonnes, ou l'export Odoo des bons de commande fournisseur (catégorie déduite du fournisseur). Recharger le même fichier ne crée pas de doublon.</p>
         <div className="flex flex-wrap items-center gap-3">
           <input type="file" accept=".xlsx,.xls,.csv,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="field cursor-pointer file:mr-4 file:cursor-pointer file:rounded-sm file:border-0 file:bg-steel-tint file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-steel-dim sm:w-auto" />
           <button type="button" onClick={handleImport} disabled={!file || importing} className="btn-secondary">{importing ? 'Import…' : 'Importer'}</button>
@@ -216,6 +219,12 @@ export function ExpensesClient({ hotelId, currencyCode }: { hotelId: string; cur
         {importResult && (
           <div className="text-sm">
             <p><strong>{importResult.inserted}</strong> dépense(s) ajoutée(s) · {importResult.alreadyPresent} déjà présente(s) · {importResult.duplicatesInFile} doublon(s) dans le fichier · {importResult.invalidCount} ligne(s) refusée(s)</p>
+            {importResult.skippedByStatus && Object.keys(importResult.skippedByStatus).length > 0 && (
+              <p className="mt-1 text-black/70">Ignorées selon leur statut : {Object.entries(importResult.skippedByStatus).map(([s, n]) => `${s} (${n})`).join(', ')}</p>
+            )}
+            {(importResult.needsReviewCount ?? 0) > 0 && (
+              <p className="mt-1 text-amber-800">{importResult.needsReviewCount} dépense(s) au montant douteux (inférieur à 1 000, devise ?) sont en attente : vérifiez-les puis approuvez-les.</p>
+            )}
             {importResult.invalid.length > 0 && (
               <ul className="mt-2 list-disc pl-5 text-red-800">
                 {importResult.invalid.slice(0, 10).map((r) => <li key={r.row}>Ligne {r.row} : {r.errors.join(' ; ')}</li>)}
