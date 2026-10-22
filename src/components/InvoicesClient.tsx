@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters';
 import { PAYMENT_STATUSES, type RevenueSummary } from '@/lib/invoices';
 import type { DepositSummary } from '@/lib/deposits';
+import { PerformanceTable } from '@/components/PerformanceTable';
 
 interface InvoiceRow {
   id: string;
@@ -142,6 +143,8 @@ export function InvoicesClient({ hotelId, currencyCode, canManage }: { hotelId: 
               {dep.toApply.count > 0 && <p role="alert" className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{dep.toApply.count} acompte(s) ({money(dep.toApply.amount)}) n&apos;ont pas été reportés sur le folio d&apos;un client déjà arrivé : à vérifier avec la réception.</p>}
             </section>
           )}
+
+          <PerformanceTable hotelId={hotelId} currencyCode={currencyCode} asOf={asOf} />
 
           <section aria-label="CA par mois" className="panel mb-6 p-5">
             <h2 className="mb-3 font-display text-lg">CA par mois, {s.asOf.slice(0, 4)} (TTC)</h2>
