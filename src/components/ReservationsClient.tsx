@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { StatusBadge, VipBadge } from '@/components/Badges';
 import { FolioPanel } from '@/components/FolioPanel';
+import { DepositPanel } from '@/components/DepositPanel';
 
 interface Reservation {
   id: string;
@@ -37,6 +38,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openFolioFor, setOpenFolioFor] = useState<string | null>(null);
+  const [openDepositFor, setOpenDepositFor] = useState<string | null>(null);
 
   // Formulaire de creation (PARTIE I)
   const [showForm, setShowForm] = useState(false);
@@ -119,6 +121,8 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
     const data = await res.json();
     setBusyId(null);
     if (!res.ok) return setActionError(data.error);
+    // Le check-in reste valide meme si le report de l'acompte sur le folio echoue : on le signale pour relance.
+    if (data.depositsError) setActionError(`Check-in effectué, mais l'acompte n'a pas pu être reporté sur le folio : ${data.depositsError}`);
     load();
   }
 
@@ -239,10 +243,18 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
                       <button disabled={busyId === r.id} onClick={() => handleAction(r.id, 'check-in')} className="row-action text-steel hover:bg-steel-tint">
                         Check-in
                       </button>
+                      <button onClick={() => setOpenDepositFor(r.id)} className="row-action text-ink-400 hover:bg-ink-800 hover:text-parchment">
+                        Acompte
+                      </button>
                       <button disabled={busyId === r.id} onClick={() => handleAction(r.id, 'cancel')} className="row-action text-wine hover:bg-wine-tint">
                         Annuler
                       </button>
                     </>
+                  )}
+                  {(r.status === 'cancelled' || r.status === 'no_show') && (
+                    <button onClick={() => setOpenDepositFor(r.id)} className="row-action text-ink-400 hover:bg-ink-800 hover:text-parchment">
+                      Acompte
+                    </button>
                   )}
                   {r.status === 'checked_in' && (
                     <>
@@ -267,6 +279,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
       </table>
       </div>
 
+      {openDepositFor && <DepositPanel reservationId={openDepositFor} onClose={() => { setOpenDepositFor(null); load(); }} />}
       {openFolioFor && <FolioPanel reservationId={openFolioFor} onClose={() => { setOpenFolioFor(null); load(); }} />}
     </div>
   );

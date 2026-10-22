@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters';
 import { PAYMENT_STATUSES, type RevenueSummary } from '@/lib/invoices';
+import type { DepositSummary } from '@/lib/deposits';
 
 interface InvoiceRow {
   id: string;
@@ -20,6 +21,7 @@ interface InvoicesResponse {
   from: string;
   to: string;
   summary: RevenueSummary;
+  deposits: DepositSummary;
   invoices: InvoiceRow[];
   listLimit: number;
 }
@@ -94,6 +96,7 @@ export function InvoicesClient({ hotelId, currencyCode, canManage }: { hotelId: 
   }
 
   const s = data?.summary;
+  const dep = data?.deposits;
   const maxMonth = s ? Math.max(1, ...s.monthly.map((m) => m.ttc)) : 1;
   const monthDelta = s && s.previousMonth.ttc > 0 ? s.month.ttc / s.previousMonth.ttc - 1 : null;
 
@@ -126,6 +129,19 @@ export function InvoicesClient({ hotelId, currencyCode, canManage }: { hotelId: 
             <div className="panel p-4"><p className="field-label">Créances</p><p className="text-xl font-semibold tabular">{money(s.receivables.ttc)}</p><p className="text-xs text-black/60">{s.receivables.count} facture(s) non soldée(s){s.receivables.partialCount > 0 && ` dont ${s.receivables.partialCount} partielle(s) (montant réglé inconnu)`}</p></div>
             <div className="panel p-4"><p className="field-label">Dont échues</p><p className="text-xl font-semibold tabular text-red-700">{money(s.receivables.overdueTtc)}</p><p className="text-xs text-black/60">{s.receivables.overdueCount} facture(s) après échéance</p></div>
           </section>
+
+          {dep && (
+            <section aria-label="Acomptes" className="mb-6">
+              <h2 className="mb-2 font-display text-lg">Acomptes <span className="text-sm font-normal text-black/60">(avances, hors CA)</span></h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="panel p-4"><p className="field-label">Reçus du jour</p><p className="text-xl font-semibold tabular">{money(dep.received.day.amount)}</p><p className="text-xs text-black/60">{dep.received.day.count} acompte(s) · mois : {money(dep.received.month.amount)} · année : {money(dep.received.year.amount)}</p></div>
+                <div className="panel p-4"><p className="field-label">En attente d&apos;arrivée</p><p className="text-xl font-semibold tabular">{money(dep.held.amount)}</p><p className="text-xs text-black/60">{dep.held.count} acompte(s), déduits du solde au check-in</p></div>
+                <div className="panel p-4"><p className="field-label">À traiter (annulations)</p><p className={`text-xl font-semibold tabular ${dep.toResolve.count > 0 ? 'text-red-700' : ''}`}>{money(dep.toResolve.amount)}</p><p className="text-xs text-black/60">{dep.toResolve.count} à rembourser ou à conserver</p></div>
+                <div className="panel p-4"><p className="field-label">Remboursés / conservés (année)</p><p className="text-xl font-semibold tabular">{money(dep.refundedYear.amount)} / {money(dep.forfeitedYear.amount)}</p><p className="text-xs text-black/60">{dep.refundedYear.count} remboursé(s) · {dep.forfeitedYear.count} conservé(s)</p></div>
+              </div>
+              {dep.toApply.count > 0 && <p role="alert" className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{dep.toApply.count} acompte(s) ({money(dep.toApply.amount)}) n&apos;ont pas été reportés sur le folio d&apos;un client déjà arrivé : à vérifier avec la réception.</p>}
+            </section>
+          )}
 
           <section aria-label="CA par mois" className="panel mb-6 p-5">
             <h2 className="mb-3 font-display text-lg">CA par mois, {s.asOf.slice(0, 4)} (TTC)</h2>
