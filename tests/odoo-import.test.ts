@@ -134,7 +134,7 @@ describe('Periode importee', () => {
     expect(byRef('B00005').errors.join(' ')).toMatch(/hors période/);
     expect(byRef('B00003').status).toBe('valid');             // depart 04/11
     // L'ecran compte ces lignes (message « hors période importée ») pour proposer de relancer sur tout le fichier.
-    expect(results.filter((r) => r.status === 'skipped' && r.errors.some((e) => e.includes('hors période importée')))).toHaveLength(3);
+    expect(results.filter((r) => r.status === 'skipped' && r.errors.some((e) => e.includes('hors période importée')))).toHaveLength(4); // B00001 x2 (deux clients), B00002, B00005
     expect(byRef('B00004').status).toBe('valid');             // depart 10/06 (jour meme, jour d'usage)
     expect(results.filter((r) => r.status === 'valid')).toHaveLength(2);
   });

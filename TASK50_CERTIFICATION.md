@@ -11,7 +11,7 @@ seulement « N ignorées » sans dire pourquoi ni comment charger l'historique.
 - Aucune règle d'import, aucune donnée et aucune base ne sont modifiées.
 
 ## Vérification
-- `tsc` propre ; test existant « Période importée » complété (3 séjours hors période comptés comme l'écran les compte) ; tests Odoo verts.
+- `tsc` propre ; test existant « Période importée » complété (4 séjours hors période comptés comme l'écran les compte) ; tests Odoo verts.
 - Simulation sur le fichier réel (4 772 lignes Odoo) avec les 7 types de chambre d'Anjary : 5 972 séjours valides, 25 ignorés (6 regroupements, 19 locations de salle), 1 refusé.
 
 ## Limites
