@@ -69,6 +69,9 @@ export async function POST(req: NextRequest) {
       validRows: results.filter((r) => r.status === 'valid').length,
       invalidRows: results.filter((r) => r.status === 'invalid').length,
       skippedRows: results.filter((r) => r.status === 'skipped').length,
+      // Sejours ecartes uniquement parce qu'ils sont termines avant la date de debut de periode : l'ecran propose de relancer sur tout le fichier.
+      outOfPeriodRows: results.filter((r) => r.status === 'skipped' && r.errors.some((e) => e.includes('hors période importée'))).length,
+      periodFrom: importFrom ?? null,
       roomDecode: roomDecode ?? null,
       preview: results.slice(0, 15),
     });
