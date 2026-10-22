@@ -15,6 +15,8 @@ interface StageResult {
   validRows: number;
   invalidRows: number;
   skippedRows?: number;
+  outOfPeriodRows?: number;
+  periodFrom?: string | null;
   roomDecode?: { exact: number; discounted?: number; ambiguous: number; unknown: number; rooms: number } | null;
   preview: PreviewRow[];
 }
@@ -39,8 +41,10 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
   );
   const [error, setError] = useState<string | null>(null);
 
-  async function handleStage() {
+  async function handleStage(scopeOverride?: 'all' | 'current') {
     if (!file) return;
+    const effectiveScope = scopeOverride ?? scope;
+    if (scopeOverride) setScope(scopeOverride);
     setStaging(true);
     setError(null);
     setResult(null);
@@ -52,7 +56,7 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
     form.append('tenantId', tenantId);
     form.append('sourceSystem', sourceSystem);
     form.append('targetEntityType', targetEntityType);
-    if (scope === 'current' && targetEntityType === 'reservation') form.append('importFrom', localToday());
+    if (effectiveScope === 'current' && targetEntityType === 'reservation') form.append('importFrom', localToday());
 
     const res = await fetch('/api/imports', { method: 'POST', body: form });
     const data = await res.json();
@@ -136,7 +140,7 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
         />
 
         <button
-          onClick={handleStage}
+          onClick={() => handleStage()}
           disabled={!file || staging}
           className="btn-primary w-fit"
         >
@@ -168,6 +172,18 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
               {applying ? 'Import en cours…' : `Importer les ${result.validRows} lignes valides`}
             </button>
           </div>
+
+          {!!result.outOfPeriodRows && (
+            <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-sm bg-ochre-tint px-4 py-3 text-sm text-ochre">
+              <span>
+                {result.outOfPeriodRows} séjours terminés avant le {result.periodFrom ? result.periodFrom.split('-').reverse().join('/') : 'jour choisi'} ne sont pas importés
+                (période « en cours et à venir »). Pour charger aussi l&apos;historique, relancez l&apos;analyse sur tout le fichier.
+              </span>
+              <button onClick={() => handleStage('all')} disabled={staging} className="btn-secondary btn-sm bg-white">
+                {staging ? 'Analyse en cours…' : 'Analyser tout le fichier'}
+              </button>
+            </div>
+          )}
 
           {result.roomDecode && (
             <p className="mb-4 rounded-sm bg-steel-tint px-4 py-3 text-sm text-steel-dim">
