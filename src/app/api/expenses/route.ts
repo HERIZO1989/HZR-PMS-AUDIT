@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
 import { computeExpenseKpis, summarizeExpenses, validateExpense } from '@/lib/expenses';
+import { fetchAllPages } from '@/lib/dbPaging';
+
+const EXPENSE_LIST_LIMIT = 500;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -28,37 +31,45 @@ export async function GET(req: NextRequest) {
   const to = toParam && DATE_RE.test(toParam) ? toParam : today;
 
   const supabase = getSupabaseAdmin();
-  const { data: rows, error } = await supabase
-    .from('expenses')
-    .select('id, expense_date, category, description, supplier, document_number, payment_method, amount_ttc, vat_deductible, amount_ht, status, created_by, approved_at, rejection_reason')
-    .eq('hotel_id', hotelId)
-    .gte('expense_date', from)
-    .lte('expense_date', to)
-    .order('expense_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(2000);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  type ListedExpense = { expense_date: string; category: string; amount_ttc: number; amount_ht: number; status: 'pending' | 'approved' | 'rejected' } & Record<string, unknown>;
+  let allRows: ListedExpense[];
+  try {
+    // Toutes les depenses de la periode (pages de 1 000) : les totaux et le GOP ne doivent jamais etre tronques par une limite d'affichage.
+    allRows = await fetchAllPages<ListedExpense>((a, b) => supabase
+      .from('expenses')
+      .select('id, expense_date, category, description, supplier, document_number, payment_method, amount_ttc, vat_deductible, amount_ht, status, created_by, approved_at, rejection_reason')
+      .eq('hotel_id', hotelId).gte('expense_date', from).lte('expense_date', to)
+      .order('expense_date', { ascending: false }).order('id').range(a, b));
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Erreur de lecture des dépenses' }, { status: 500 });
+  }
+  const summary = summarizeExpenses(allRows);
 
-  const summary = summarizeExpenses(rows ?? []);
+  // Nuitees : moteur KPI du PMS. Recettes : CA des factures comptabilisees (HT) quand il y en a sur la periode, sinon revenu hebergement du PMS.
+  const kpi = await fetchAllPages<{ rooms_available: number; rooms_occupied: number; total_revenue: number }>((a, b) => supabase
+    .from('kpi_daily_snapshots').select('rooms_available, rooms_occupied, total_revenue')
+    .eq('hotel_id', hotelId).gte('business_date', from).lte('business_date', to).order('business_date').range(a, b)).catch(() => []);
+  const sum = (key: 'rooms_available' | 'rooms_occupied' | 'total_revenue') => kpi.reduce((t, r) => t + Number(r[key] ?? 0), 0);
 
-  // Recettes et nuitees de la meme periode, telles que calculees par le moteur KPI du PMS.
-  const { data: kpi } = await supabase
-    .from('kpi_daily_snapshots')
-    .select('rooms_available, rooms_occupied, total_revenue')
-    .eq('hotel_id', hotelId)
-    .gte('business_date', from)
-    .lte('business_date', to);
-  const sum = (key: 'rooms_available' | 'rooms_occupied' | 'total_revenue') =>
-    (kpi ?? []).reduce((s, r) => s + Number(r[key] ?? 0), 0);
+  const { data: hotel } = await supabase.from('hotels').select('vat_rate').eq('id', hotelId).single();
+  const vat = Number(hotel?.vat_rate ?? 0) > 0 ? 1 + Number(hotel?.vat_rate) : 1;
+  const invoices = await fetchAllPages<{ amount_ttc: number }>((a, b) => supabase
+    .from('invoices').select('amount_ttc')
+    .eq('hotel_id', hotelId).neq('payment_status', 'reversed').gte('invoice_date', from).lte('invoice_date', to).order('invoice_date').order('id').range(a, b)).catch(() => []);
+  const billedHt = invoices.reduce((t, r) => t + Number(r.amount_ttc), 0) / vat;
+  const revenueSource = invoices.length > 0 ? 'invoices' : 'kpi';
+
   const kpis = computeExpenseKpis({
-    revenue: sum('total_revenue'),
+    revenue: Math.round((revenueSource === 'invoices' ? billedHt : sum('total_revenue')) * 100) / 100,
     expensesHt: summary.approved.ht,
     roomsAvailable: sum('rooms_available'),
     roomsOccupied: sum('rooms_occupied'),
   });
 
   return NextResponse.json({
-    from, to, expenses: rows ?? [], summary, kpis,
+    from, to, expenses: allRows.slice(0, EXPENSE_LIST_LIMIT), expensesTotal: allRows.length, listLimit: EXPENSE_LIST_LIMIT,
+    summary, kpis, revenueSource,
+    hasPersonnelExpenses: allRows.some((r) => r.category === 'personnel' && r.status === 'approved'),
     canApprove: hasPermission(session, 'expenses.approve'),
     currentStaffUserId: session.staffUserId,
   });

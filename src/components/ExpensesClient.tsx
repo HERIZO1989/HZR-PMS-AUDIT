@@ -25,6 +25,10 @@ interface Payload {
   expenses: ExpenseItem[];
   summary: ExpenseSummary;
   kpis: ExpenseKpis;
+  expensesTotal?: number;
+  listLimit?: number;
+  revenueSource?: 'invoices' | 'kpi';
+  hasPersonnelExpenses?: boolean;
   canApprove: boolean;
   currentStaffUserId: string;
 }
@@ -177,11 +181,14 @@ export function ExpensesClient({ hotelId, currencyCode }: { hotelId: string; cur
       </header>
 
       {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {data && data.hasPersonnelExpenses === false && (
+        <p role="alert" className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Aucune dépense « Personnel » approuvée sur cette période : le GOP est surévalué tant que les salaires et charges sociales ne sont pas saisis.</p>
+      )}
 
       {k && s && (
         <section aria-label="Indicateurs" className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="panel p-4"><p className="field-label">Dépenses approuvées (HT)</p><p className="text-xl font-semibold tabular">{money(s.approved.ht)}</p><p className="text-xs text-black/60">{s.approved.count} dépense(s) · en attente : {s.pending.count} ({money(s.pending.ht)})</p></div>
-          <div className="panel p-4"><p className="field-label">Recettes (HT)</p><p className="text-xl font-semibold tabular">{money(k.revenue)}</p><p className="text-xs text-black/60">Selon les indicateurs du PMS</p></div>
+          <div className="panel p-4"><p className="field-label">Recettes (HT)</p><p className="text-xl font-semibold tabular">{money(k.revenue)}</p><p className="text-xs text-black/60">{data?.revenueSource === 'invoices' ? 'Factures comptabilisées, HT' : 'Selon les indicateurs du PMS'}</p></div>
           <div className="panel p-4"><p className="field-label">GOP</p><p className="text-xl font-semibold tabular">{money(k.gop)}</p><p className="text-xs text-black/60">Marge : {formatPercent(k.gopMargin)}</p></div>
           <div className="panel p-4"><p className="field-label">GOPPAR</p><p className="text-xl font-semibold tabular">{money(k.goppar)}</p><p className="text-xs text-black/60">GOP par chambre disponible</p></div>
           <div className="panel p-4"><p className="field-label">CPOR</p><p className="text-xl font-semibold tabular">{money(k.cpor)}</p><p className="text-xs text-black/60">Dépenses par chambre occupée</p></div>
@@ -266,6 +273,9 @@ export function ExpensesClient({ hotelId, currencyCode }: { hotelId: string; cur
         <table className="data-table mt-3">
           <thead><tr><th>Date</th><th>Catégorie</th><th>Détail</th><th>Paiement</th><th className="num">TTC</th><th className="num">HT</th><th>Statut</th><th></th></tr></thead>
           <tbody>
+            {data && data.expensesTotal !== undefined && data.expensesTotal > data.expenses.length && (
+              <tr><td colSpan={8} className="py-2 text-center text-xs text-black/60">Les {data.expenses.length} dernières dépenses sur {data.expensesTotal} sont affichées ; les totaux et le GOP portent sur toutes.</td></tr>
+            )}
             {data?.expenses.length === 0 && <tr><td colSpan={8} className="text-center text-black/60">Aucune dépense sur cette période.</td></tr>}
             {data?.expenses.map((x) => (
               <tr key={x.id}>
