@@ -26,5 +26,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const status = error.code === '23P01' ? 409 : 422;
     return NextResponse.json({ error: error.message }, { status });
   }
-  return NextResponse.json({ reservation: data });
+
+  // Les acomptes encaisses avant l'arrivee sont reportes comme paiement sur le folio tout juste ouvert.
+  // Un echec n'annule pas le check-in : les acomptes restent « en attente » et l'ecran Factures & CA les signale (« à reporter »).
+  const { data: applied, error: depositError } = await supabase.rpc('apply_reservation_deposits', {
+    p_reservation_id: params.id,
+    p_hotel_id: session!.hotelId,
+    p_staff_user_id: session!.staffUserId,
+  });
+  return NextResponse.json({
+    reservation: data,
+    depositsApplied: depositError ? 0 : Number(applied ?? 0),
+    ...(depositError ? { depositsError: depositError.message } : {}),
+  });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
 import { PAYMENT_STATUSES, summarizeRevenue, type InvoiceLite } from '@/lib/invoices';
+import { summarizeDeposits, type DepositLite, type DepositStatus } from '@/lib/deposits';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const PAGE = 1000;
@@ -35,12 +36,12 @@ export async function GET(req: NextRequest) {
   const vatRate = Number(hotel?.vat_rate ?? 0);
 
   // Lecture par pages de 1 000 lignes (limite PostgREST), ordre stable pour ne rien sauter ni compter deux fois.
-  async function fetchAll(build: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<InvoiceLite[]> {
-    const all: InvoiceLite[] = [];
+  async function fetchAll<T = InvoiceLite>(build: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>): Promise<T[]> {
+    const all: T[] = [];
     for (let start = 0; ; start += PAGE) {
       const { data, error } = await build(start, start + PAGE - 1);
       if (error) throw new Error(error.message);
-      all.push(...((data ?? []) as InvoiceLite[]));
+      all.push(...((data ?? []) as T[]));
       if (!data || data.length < PAGE) break;
     }
     return all;
@@ -58,6 +59,18 @@ export async function GET(req: NextRequest) {
         .eq('hotel_id', hotelId).in('payment_status', ['unpaid', 'partial'])
         .order('invoice_date').order('id').range(a, b)),
     ]);
+    // Acomptes : recus cette annee (heure de Madagascar, UTC+3) + tous ceux encore en attente, avec le statut de leur reservation.
+    const yearStartUtc = new Date(Date.UTC(Number(asOf.slice(0, 4)), 0, 1) - 3 * 3600 * 1000).toISOString();
+    type DepositRow = { amount: number; status: DepositStatus; received_at: string; resolved_at: string | null; reservations: { status: string } | { status: string }[] | null };
+    const depositRows = await fetchAll<DepositRow>((a, b) => supabase.from('reservation_deposits')
+      .select('amount, status, received_at, resolved_at, reservations(status)')
+      .eq('hotel_id', hotelId).or(`received_at.gte.${yearStartUtc},status.eq.held`)
+      .order('received_at').order('id').range(a, b));
+    const deposits = summarizeDeposits(depositRows.map((d): DepositLite => ({
+      amount: Number(d.amount), status: d.status, received_at: d.received_at, resolved_at: d.resolved_at,
+      reservation_status: (Array.isArray(d.reservations) ? d.reservations[0]?.status : d.reservations?.status) ?? null,
+    })), asOf);
+
     const summary = summarizeRevenue([...yearRows, ...openRows].map((r) => ({ ...r, amount_ttc: Number(r.amount_ttc) })), asOf, vatRate);
 
     let list = supabase.from('invoices').select(COLS).eq('hotel_id', hotelId).gte('invoice_date', from).lte('invoice_date', to);
@@ -66,7 +79,7 @@ export async function GET(req: NextRequest) {
     const { data: invoices, error } = await list.order('invoice_date', { ascending: false }).order('id').limit(300);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ asOf, from, to, summary, invoices: invoices ?? [], listLimit: 300 });
+    return NextResponse.json({ asOf, from, to, summary, deposits, invoices: invoices ?? [], listLimit: 300 });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Erreur de lecture des factures' }, { status: 500 });
   }
