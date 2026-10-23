@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
-import { expenseFingerprint } from '@/lib/expenses';
+import { expenseFingerprint, type ExpenseCategory } from '@/lib/expenses';
+import { supplierRuleKey } from '@/lib/expenseRules';
 import { MAX_EXPENSE_ROWS, prepareExpenseRows, readExpenseRows } from '@/lib/expensesImport';
 
 export const runtime = 'nodejs';
@@ -30,24 +31,31 @@ export async function POST(req: NextRequest) {
   }
 
   const prepared = prepareExpenseRows(raw);
+  const supabase = getSupabaseAdmin();
+  // Regles fournisseur -> categorie de l'hotel : elles remplacent la categorie deduite. Le doublon est detecte AVANT le reclassement,
+  // pour qu'un changement de regle ne cree jamais de depense en double au rechargement du meme fichier.
+  const { data: ruleRows } = await supabase.from('expense_supplier_rules').select('supplier_key, category').eq('hotel_id', session.hotelId);
+  const rules = new Map<string, ExpenseCategory>((ruleRows ?? []).map((r) => [r.supplier_key as string, r.category as ExpenseCategory]));
   const autoApprove = hasPermission(session, 'expenses.approve');
   const nowIso = new Date().toISOString();
   const toInsert = prepared.valid.map(({ sourceKey, needsReview, ...v }) => {
     // Les lignes « à vérifier » (montant douteux) restent en attente : elles ne comptent dans aucun total tant qu'un valideur ne les a pas approuvées.
     const approve = autoApprove && !needsReview;
+    const idempotencyKey = createHash('sha1').update(sourceKey ?? expenseFingerprint(v)).digest('hex');
+    const ruled = v.supplier ? rules.get(supplierRuleKey(v.supplier)) : undefined;
     return {
       ...v,
+      ...(ruled ? { category: ruled } : {}),
       tenant_id: session.tenantId,
       hotel_id: session.hotelId,
       created_by: session.staffUserId,
       status: approve ? 'approved' : 'pending',
       approved_by: approve ? session.staffUserId : null,
       approved_at: approve ? nowIso : null,
-      idempotency_key: createHash('sha1').update(sourceKey ?? expenseFingerprint(v)).digest('hex'),
+      idempotency_key: idempotencyKey,
     };
   });
 
-  const supabase = getSupabaseAdmin();
   let inserted = 0;
   for (let i = 0; i < toInsert.length; i += 200) {
     const chunk = toInsert.slice(i, i + 200);
