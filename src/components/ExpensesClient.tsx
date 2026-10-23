@@ -1,5 +1,6 @@
 'use client';
 
+import { SupplierClassifier } from '@/components/SupplierClassifier';
 import { useCallback, useEffect, useState } from 'react';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, type ExpenseKpis, type ExpenseSummary } from '@/lib/expenses';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters';
@@ -195,6 +196,8 @@ export function ExpensesClient({ hotelId, currencyCode }: { hotelId: string; cur
           <div className="panel p-4"><p className="field-label">Dépenses / recettes</p><p className="text-xl font-semibold tabular">{formatPercent(k.expenseRatio)}</p><p className="text-xs text-black/60">{money(k.expensePerAvailableRoom)} par chambre disponible</p></div>
         </section>
       )}
+
+      <SupplierClassifier hotelId={hotelId} currencyCode={currencyCode} onChanged={() => void load()} />
 
       <form onSubmit={handleAdd} className="panel mb-6 grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
         <h2 className="sm:col-span-2 lg:col-span-4 font-display text-lg">Ajouter une dépense</h2>
