@@ -12,6 +12,7 @@ const ITEMS = [
   { href: '/night-audit', label: 'Night Audit' },
   { href: '/invoices', label: 'Factures & CA' },
   { href: '/expenses', label: 'Dépenses' },
+  { href: '/audit', label: "Contrôles d'audit" },
   { href: '/imports', label: 'Imports' },
   { href: '/billing', label: 'Facturation' },
 ];
