@@ -1,4 +1,4 @@
-# Migrations Supabase — Riviera Suite PMS
+# Migrations Supabase — PMS Audit
 
 ## Contexte (BUG-17 de l'audit)
 

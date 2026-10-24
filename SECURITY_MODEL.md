@@ -1,4 +1,4 @@
-# Modèle d'isolation multi-tenant — Riviera Suite PMS
+# Modèle d'isolation multi-tenant — PMS Audit
 
 Ce document remplace l'affirmation initialement incorrecte ("isolation via RLS + variables
 de session PostgreSQL") par une description fidèle à ce qui est réellement en place, conformément

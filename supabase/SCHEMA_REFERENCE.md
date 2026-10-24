@@ -1,4 +1,4 @@
-# Référence du schéma — Riviera Suite PMS (état à TASK 8)
+# Référence du schéma — PMS Audit (état à TASK 8)
 
 Document de référence obtenu par introspection directe de la base réelle. Voir
 `README.md` dans ce dossier pour le contexte et les limites de cette documentation.
