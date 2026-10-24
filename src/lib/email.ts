@@ -4,7 +4,7 @@ import { formatCurrency, formatDate } from './formatters';
 // Adresse d'expedition du domaine de test Resend (aucune verification de domaine requise).
 // Limitation connue : en mode sandbox, Resend n'autorise l'envoi qu'a l'adresse email
 // du compte proprietaire, pas a n'importe quel client reel. Pour un envoi reel a tous
-// les clients, un domaine verifie (ex. mail.riviera-pms.com) doit etre configure dans
+// les clients, un domaine verifie (ex. mail.pms-audit.com) doit etre configure dans
 // le dashboard Resend puis utilise ici a la place de FROM_ADDRESS.
 const FROM_ADDRESS = 'PMS Audit <onboarding@resend.dev>';
 

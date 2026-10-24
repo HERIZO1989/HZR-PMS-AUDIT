@@ -3,10 +3,10 @@ set -e
 echo "== Initialisation du depot Git =="
 git init
 git add .
-git commit -m "Initial commit - PMS Riviera"
+git commit -m "Initial commit - PMS Audit"
 git branch -M main
 
-read -p "Colle ici l'URL de ton repo GitHub (ex: https://github.com/toncompte/pms-riviera.git): " REPO_URL
+read -p "Colle ici l'URL de ton repo GitHub (ex: https://github.com/toncompte/pms-audit.git): " REPO_URL
 git remote add origin "$REPO_URL"
 git push -u origin main
 
