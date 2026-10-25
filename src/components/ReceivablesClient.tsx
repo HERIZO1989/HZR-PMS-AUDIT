@@ -13,6 +13,7 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [onlyOld, setOnlyOld] = useState(false);
+  const [onlyReconcile, setOnlyReconcile] = useState(false);
   const [selected, setSelected] = useState<ClientRow | null>(null);
   const [detail, setDetail] = useState<OpenInvoice[] | null>(null);
   const [copied, setCopied] = useState(false);
@@ -48,9 +49,9 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
 
   function downloadCsv() {
     if (!data) return;
-    const head = ['Client', 'Factures', 'Total TTC', 'Échu', 'Plus de 90 jours', 'Plus ancienne', ...BUCKETS.map((b) => b.label)];
+    const head = ['Client', 'Factures', 'Total TTC', 'Dont à rapprocher', 'Échu', 'Plus de 90 jours', 'Plus ancienne', ...BUCKETS.map((b) => b.label)];
     const lines = [head.map(csvCell).join(';')];
-    for (const c of data.clients) lines.push([c.client, c.count, c.total, c.overdue, c.over90, c.oldest, ...BUCKETS.map((b) => c.buckets[b.code])].map(csvCell).join(';'));
+    for (const c of data.clients) lines.push([c.client, c.count, c.total, c.toReconcile, c.overdue, c.over90, c.oldest, ...BUCKETS.map((b) => c.buckets[b.code])].map(csvCell).join(';'));
     const url = URL.createObjectURL(new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' }));
     const a = document.createElement('a');
     a.href = url; a.download = `creances_${data.today}.csv`; a.click();
@@ -60,8 +61,10 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
   const rows = useMemo(() => {
     if (!data) return [];
     const needle = normalize(q.trim());
-    return data.clients.filter((c) => (!needle || normalize(c.client).includes(needle)) && (!onlyOld || c.over90 > 0)).slice(0, 200);
-  }, [data, q, onlyOld]);
+    return data.clients.filter((c) => (!needle || normalize(c.client).includes(needle)) && (!onlyOld || c.over90 > 0) && (!onlyReconcile || c.toReconcile > 0)).slice(0, 200);
+  }, [data, q, onlyOld, onlyReconcile]);
+  const claimable = detail ? detail.filter((i) => i.reconcile !== 'a_rapprocher').length : 0;
+  const excluded = detail ? detail.length - claimable : 0;
   const maxBucket = data ? Math.max(1, ...data.buckets.map((b) => b.amount)) : 1;
 
   return (
@@ -79,10 +82,12 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
 
       {data && (
         <>
-          <section aria-label="Synthèse" className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <section aria-label="Synthèse" className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="panel p-4"><p className="field-label">Total des créances</p><p className="text-xl font-semibold tabular">{money(data.total)}</p><p className="text-xs text-black/60">{data.count.toLocaleString('fr-FR')} factures · {data.clientCount} clients</p></div>
             <div className="panel p-4"><p className="field-label">Échues</p><p className="text-xl font-semibold tabular text-red-700">{money(data.overdue)}</p><p className="text-xs text-black/60">{data.overdueCount.toLocaleString('fr-FR')} factures après échéance</p></div>
             <div className="panel p-4"><p className="field-label">Plus de 90 jours</p><p className="text-xl font-semibold tabular">{money(data.over90)}</p><p className="text-xs text-black/60">{data.total > 0 ? Math.round((data.over90 / data.total) * 100) : 0} % du total</p></div>
+            <div className="panel p-4"><p className="field-label">Créances fiables</p><p className="text-xl font-semibold tabular">{money(data.reliable.amount)}</p><p className="text-xs text-black/60">{data.reliable.count.toLocaleString('fr-FR')} factures, hors « à rapprocher »</p></div>
+            <div className="panel border-amber-200 bg-amber-50 p-4"><p className="field-label">À rapprocher</p><p className="text-xl font-semibold tabular text-amber-900">{money(data.toReconcile.amount)}</p><p className="text-xs text-amber-900/80">{data.toReconcile.count.toLocaleString('fr-FR')} petites factures (restaurant, buanderie) probablement déjà réglées</p></div>
             <div className="panel p-4"><p className="field-label">Concentration</p><p className="text-xl font-semibold tabular">{Math.round(data.top20Share * 100)} %</p><p className="text-xs text-black/60">du total sur les 20 premiers clients</p></div>
           </section>
 
@@ -97,7 +102,8 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
                 </li>
               ))}
             </ul>
-            <p className="mt-3 text-xs text-black/60">« Partiellement réglée » : l&apos;export Odoo ne donne pas le montant déjà réglé, ces factures comptent pour leur montant complet.</p>
+            <p className="mt-3 text-xs text-black/60">« À rapprocher » : facture non payée dont le numéro est aussi porté par une autre facture, pour un client qui a déjà payé une autre facture à ± 60 jours. Ces consommations ont sans doute été réglées avec le séjour sans que le paiement soit rapproché dans Odoo : à vérifier avant toute relance. Elles ne figurent jamais dans le message de relance.</p>
+            <p className="mt-2 text-xs text-black/60">« Partiellement réglée » : l&apos;export Odoo ne donne pas le montant déjà réglé, ces factures comptent pour leur montant complet.</p>
           </section>
 
           <section aria-label="Clients" className="panel p-5">
@@ -105,13 +111,14 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
               <h2 className="font-display text-lg">Clients débiteurs</h2>
               <div className="flex flex-wrap items-end gap-3">
                 <div><label htmlFor="rec-q" className="field-label">Rechercher</label><input id="rec-q" value={q} maxLength={60} onChange={(e) => setQ(e.target.value)} className="field" /></div>
-                <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={onlyOld} onChange={(e) => setOnlyOld(e.target.checked)} />Plus de 90 jours seulement</label>
+                <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={onlyOld} onChange={(e) => setOnlyOld(e.target.checked)} />Plus de 90 jours</label>
+                <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={onlyReconcile} onChange={(e) => setOnlyReconcile(e.target.checked)} />Avec « à rapprocher »</label>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead><tr className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60">
-                  <th className="py-2 pr-3">Client</th><th className="pr-3 text-right">Fact.</th><th className="pr-3 text-right">Total TTC</th><th className="pr-3 text-right">+ 90 j</th><th className="pr-3">Plus ancienne</th><th />
+                  <th className="py-2 pr-3">Client</th><th className="pr-3 text-right">Fact.</th><th className="pr-3 text-right">Total TTC</th><th className="pr-3 text-right">+ 90 j</th><th className="pr-3 text-right">À rapprocher</th><th className="pr-3">Plus ancienne</th><th />
                 </tr></thead>
                 <tbody>
                   {rows.map((c) => (
@@ -120,15 +127,16 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
                       <td className="pr-3 text-right tabular">{c.count}</td>
                       <td className="pr-3 text-right tabular">{money(c.total)}</td>
                       <td className={`pr-3 text-right tabular ${c.over90 > 0 ? 'text-red-700' : 'text-black/40'}`}>{money(c.over90)}</td>
+                      <td className={`pr-3 text-right tabular ${c.toReconcile > 0 ? 'text-amber-800' : 'text-black/40'}`}>{money(c.toReconcile)}</td>
                       <td className="pr-3 whitespace-nowrap">{formatDate(c.oldest)}</td>
                       <td className="text-right"><button onClick={() => openClient(c)} className="row-action">Détail</button></td>
                     </tr>
                   ))}
-                  {rows.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-black/60">Aucun client ne correspond.</td></tr>}
+                  {rows.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-black/60">Aucun client ne correspond.</td></tr>}
                 </tbody>
               </table>
             </div>
-            {data.clientCount > rows.length && !q && !onlyOld && <p className="mt-3 text-xs text-black/60">Les 200 plus gros débiteurs sur {data.clientCount} sont affichés ; utilisez la recherche pour les autres. L&apos;export CSV contient tous les clients.</p>}
+            {data.clientCount > rows.length && !q && !onlyOld && !onlyReconcile && <p className="mt-3 text-xs text-black/60">Les 200 plus gros débiteurs sur {data.clientCount} sont affichés ; utilisez la recherche pour les autres. L&apos;export CSV contient tous les clients.</p>}
           </section>
         </>
       )}
@@ -146,12 +154,14 @@ export function ReceivablesClient({ hotelId, hotelName, currencyCode }: { hotelI
                   <table className="w-full text-left text-sm">
                     <thead><tr className="border-b border-black/10 text-xs uppercase tracking-wide text-black/60"><th className="py-1 pr-3">N°</th><th className="pr-3">Date</th><th className="pr-3">Échéance</th><th className="text-right">Montant</th></tr></thead>
                     <tbody>{detail.map((i, k) => (
-                      <tr key={k} className="border-b border-black/5"><td className="py-1 pr-3 tabular">{i.invoice_number ?? '—'}</td><td className="pr-3 whitespace-nowrap">{formatDate(i.invoice_date)}</td><td className="pr-3 whitespace-nowrap">{i.due_date ? formatDate(i.due_date) : '—'}</td><td className="text-right tabular">{money(Number(i.amount_ttc))}{i.payment_status === 'partial' && <span className="ml-1 text-xs text-amber-700">(partiel)</span>}</td></tr>
+                      <tr key={k} className="border-b border-black/5"><td className="py-1 pr-3 tabular">{i.invoice_number ?? '—'}</td><td className="pr-3 whitespace-nowrap">{formatDate(i.invoice_date)}</td><td className="pr-3 whitespace-nowrap">{i.due_date ? formatDate(i.due_date) : '—'}</td><td className="text-right tabular">{money(Number(i.amount_ttc))}{i.payment_status === 'partial' && <span className="ml-1 text-xs text-amber-700">(partiel)</span>}{i.reconcile === 'a_rapprocher' && <span className="ml-1 rounded bg-amber-100 px-1 text-xs text-amber-900">à rapprocher</span>}{i.reconcile === 'double_sans_paiement' && <span className="ml-1 rounded bg-sky-100 px-1 text-xs text-sky-900">n° en double</span>}</td></tr>
                     ))}</tbody>
                   </table>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <button onClick={copyReminder} className="btn-primary btn-sm">Copier le message de relance</button>
+                  <button onClick={copyReminder} disabled={claimable === 0} className="btn-primary btn-sm">Copier le message de relance</button>
+                  {excluded > 0 && <span className="text-sm text-amber-800">{excluded} facture(s) « à rapprocher » ne figurent pas dans le message.</span>}
+                  {claimable === 0 && <span className="text-sm text-amber-800">Rien à relancer : toutes les factures sont à rapprocher dans Odoo.</span>}
                   {copied && <span role="status" className="text-sm text-emerald-700">Message copié : collez-le dans WhatsApp ou un e-mail.</span>}
                 </div>
               </>

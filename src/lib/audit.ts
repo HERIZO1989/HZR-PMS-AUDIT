@@ -1,5 +1,6 @@
 // Controles d'audit des donnees : anomalies detectees en permanence, avec leur montant et des exemples.
 import type { DepositSummary } from './deposits';
+import { tagInvoices } from './receivables';
 
 export type Severity = 'high' | 'medium' | 'low' | 'ok';
 
@@ -69,6 +70,27 @@ export function buildFindings(input: AuditInput): Finding[] {
       .map(([n, l]) => ({ n, l, total: l.reduce((s, i) => s + Number(i.amount_ttc), 0) }))
       .sort((a, b) => b.total - a.total).slice(0, 10)
       .map(({ n, l, total }) => [n, String(l.length), [...new Set(l.map((i) => i.partner_name))].slice(0, 2).join(' / '), fmt(total)]),
+  });
+
+  // 1 bis. Consommations (restaurant, buanderie) probablement reglees mais non rapprochees : numero en double + client ayant paye a proximite.
+  const toReconcile = tagInvoices(input.invoices.map((i) => ({ ...i, invoice_number: i.invoice_number }))).filter((i) => i.reconcile === 'a_rapprocher');
+  const reconcileAmount = round2(toReconcile.reduce((t, i) => t + Number(i.amount_ttc), 0));
+  const allOpen = input.invoices.filter((i) => i.payment_status === 'unpaid' || i.payment_status === 'partial').reduce((t, i) => t + Number(i.amount_ttc), 0);
+  const recByClient = new Map<string, { n: number; total: number }>();
+  for (const i of toReconcile) {
+    const c = recByClient.get(i.partner_name) ?? { n: 0, total: 0 };
+    c.n += 1; c.total += Number(i.amount_ttc);
+    recByClient.set(i.partner_name, c);
+  }
+  out.push({
+    id: 'extras-to-reconcile', title: 'Consommations à rapprocher (restaurant, buanderie)',
+    severity: toReconcile.length > 0 ? 'medium' : 'ok', count: toReconcile.length, amount: toReconcile.length > 0 ? reconcileAmount : null,
+    detail: toReconcile.length > 0
+      ? `${toReconcile.length} petites factures non payées portent un numéro déjà utilisé et concernent des clients ayant payé une autre facture à ± 60 jours (${allOpen > 0 ? Math.round((reconcileAmount / allOpen) * 100) : 0} % des créances). Elles sont probablement réglées avec le séjour mais non rapprochées : elles gonflent les créances.`
+      : 'Aucune facture non payée en double avec un paiement proche.',
+    action: 'Rapprocher les règlements dans Odoo (ou annuler les doublons), puis réimporter les factures. Ne pas les relancer en attendant.',
+    columns: ['Client', 'Factures', 'Montant TTC'],
+    examples: [...recByClient.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 10).map(([c, v]) => [c, String(v.n), fmt(v.total)]),
   });
 
   // 2. Creances de plus de 90 jours.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucketOf, buildReceivables, buildReminder, type OpenInvoice } from '../src/lib/receivables';
+import { bucketOf, buildReceivables, buildReminder, tagInvoices, type OpenInvoice } from '../src/lib/receivables';
 
 const TODAY = '2026-10-24';
 const inv = (partner_name: string, invoice_date: string, amount_ttc: number, payment_status = 'unpaid', due_date: string | null = null, invoice_number: string | null = null): OpenInvoice =>
@@ -62,5 +62,50 @@ describe('message de relance', () => {
     const many = Array.from({ length: 20 }, (_, i) => inv('X', `2026-0${(i % 9) + 1}-01`, 1000, 'unpaid', null, `F${i}`));
     expect(buildReminder('X', many, 'H', 'MGA', TODAY, 15)).toContain('… et 5 autre(s) facture(s)');
     expect(buildReminder('X', [many[0]], 'H', 'MGA', TODAY)).toContain('une facture de H reste à régler');
+  });
+});
+
+describe('créances à rapprocher (numéro en double et paiement proche)', () => {
+  const base = [
+    inv('MARTIN', '2026-08-01', 190000, 'paid', null, 'FAC/2026/00100'),           // séjour réglé
+    inv('MARTIN', '2026-09-20', 20000, 'unpaid', null, 'FAC/2026/00100'),          // petite facture, même numéro, client ayant payé à 50 j : à rapprocher
+    inv('LOIN', '2026-03-01', 150000, 'paid', null, 'FAC/2026/00200'),
+    inv('LOIN', '2026-09-20', 15000, 'unpaid', null, 'FAC/2026/00200'),            // payé il y a plus de 60 jours : numéro en double sans paiement proche
+    inv('SEUL', '2026-09-01', 80000, 'unpaid', null, 'FAC/2026/00300'),            // numéro unique : créance fiable
+    inv('PARTIEL', '2026-09-01', 90000, 'partial', null, 'FAC/2026/00400'),
+    inv('PARTIEL', '2026-09-02', 10000, 'paid', null, 'FAC/2026/00400'),           // partielle : jamais étiquetée
+    inv('SANSNUM', '2026-09-01', 5000, 'unpaid', null, null),
+  ];
+  const tagged = tagInvoices(base);
+
+  it('étiquette uniquement les « non payées » au numéro en double', () => {
+    expect(tagged.map((i) => i.reconcile)).toEqual([null, 'a_rapprocher', null, 'double_sans_paiement', null, null, null, null]);
+  });
+
+  it('sépare les créances fiables de celles à rapprocher, par client et au total', () => {
+    const s = buildReceivables(tagged.filter((i) => i.payment_status === 'unpaid' || i.payment_status === 'partial'), TODAY);
+    expect(s.toReconcile).toEqual({ count: 1, amount: 20000 });
+    expect(s.reliable).toEqual({ count: 4, amount: 190000 });
+    expect(s.total).toBe(210000);
+    expect(s.clients.find((c) => c.client === 'MARTIN')?.toReconcile).toBe(20000);
+    expect(s.clients.find((c) => c.client === 'LOIN')?.toReconcile).toBe(0);
+  });
+
+  it('ne réclame jamais au client les factures à rapprocher', () => {
+    const martin = tagged.filter((i) => i.partner_name === 'MARTIN');
+    const msg = buildReminder('MARTIN', martin, 'Hôtel Anjary', 'MGA', TODAY);
+    expect(msg).toContain('Total à régler : 0 Ar.');
+    const loin = buildReminder('LOIN', tagged.filter((i) => i.partner_name === 'LOIN'), 'Hôtel Anjary', 'MGA', TODAY);
+    expect(loin).toContain('Total à régler : 15 000 Ar.');
+  });
+
+  it('la fenêtre est de ± 60 jours, bornes comprises', () => {
+    const t = tagInvoices([
+      inv('A', '2026-07-01', 100, 'paid', null, 'N1'), inv('A', '2026-08-30', 10, 'unpaid', null, 'N1'),   // 60 j : proche
+      inv('B', '2026-07-01', 100, 'paid', null, 'N2'), inv('B', '2026-08-31', 10, 'unpaid', null, 'N2'),   // 61 j : trop loin
+      inv('C', '2026-09-20', 100, 'in_payment', null, 'N3'), inv('C', '2026-08-01', 10, 'unpaid', null, 'N3'), // paiement 50 j après : fenêtre symétrique
+      inv('D', '2026-10-25', 100, 'in_payment', null, 'N4'), inv('D', '2026-08-01', 10, 'unpaid', null, 'N4'), // paiement 85 j après : trop loin
+    ]);
+    expect([t[1].reconcile, t[3].reconcile, t[5].reconcile, t[7].reconcile]).toEqual(['a_rapprocher', 'double_sans_paiement', 'a_rapprocher', 'double_sans_paiement']);
   });
 });

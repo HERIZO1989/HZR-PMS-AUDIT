@@ -83,4 +83,14 @@ describe('contrôles d’audit', () => {
     expect(order).toEqual([...order].sort((a, b) => rank[a as keyof typeof rank] - rank[b as keyof typeof rank]));
     expect(order[0]).toBe('high');
   });
+
+  it('signale les consommations à rapprocher : numéro en double, client ayant payé à proximité', () => {
+    const f = find(base({ invoices: [
+      inv('FAC/1', 'MARTIN', '2026-09-01', 190000, 'paid', '2026-09-02'), inv('FAC/1', 'MARTIN', '2026-10-10', 20000, 'unpaid'),
+      inv('FAC/2', 'AUTRE', '2026-01-01', 100000, 'paid', '2026-01-02'), inv('FAC/2', 'AUTRE', '2026-10-10', 30000, 'unpaid'),
+    ] }), 'extras-to-reconcile');
+    expect(f).toMatchObject({ severity: 'medium', count: 1, amount: 20000 });
+    expect(f.detail).toContain('40 %');
+    expect(f.examples[0]).toEqual(['MARTIN', '1', '20 000']);
+  });
 });
