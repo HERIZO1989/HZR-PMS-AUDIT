@@ -1,0 +1,11 @@
+import { ReceivablesClient } from '@/components/ReceivablesClient';
+import { getSession } from '@/lib/session';
+import { getHotelBrand } from '@/lib/supabaseAdmin';
+import { redirect } from 'next/navigation';
+
+export default async function ReceivablesPage() {
+  const session = await getSession();
+  if (!session) redirect('/login');
+  const { name, currencyCode } = await getHotelBrand(session.hotelId);
+  return <ReceivablesClient hotelId={session.hotelId} hotelName={name} currencyCode={currencyCode} />;
+}
