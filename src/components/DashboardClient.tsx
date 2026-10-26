@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters';
 import { severityBorder, SeverityBadge } from '@/components/Badges';
 import { KpiTrendChart } from '@/components/KpiTrendChart';
+import Link from 'next/link';
 
 interface KpiResponse {
   averages: { occupancy_rate: number; adr: number; revpar: number };
@@ -32,6 +33,25 @@ export function DashboardClient({
   const [kpis, setKpis] = useState<KpiResponse | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [finance, setFinance] = useState<FinanceStrip | null>(null);
+
+  // Bandeau finance : charge apres le reste, sans bloquer l'ecran ; masque pour les roles sans droit « finance.manage » (reponse 403).
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch(`/api/invoices?hotelId=${hotelId}&summaryOnly=1`),
+      fetch(`/api/receivables?hotelId=${hotelId}`),
+    ]).then(async ([inv, rec]) => {
+      if (!inv.ok || !rec.ok || cancelled) return;
+      const [i, r] = await Promise.all([inv.json(), rec.json()]);
+      if (cancelled) return;
+      setFinance({
+        asOf: i.asOf, requestedAsOf: i.requestedAsOf, day: i.summary.day, month: i.summary.month, cashedDay: i.summary.cashed.day.ttc,
+        reliable: r.reliable.amount, reliableCount: r.reliable.count, toReconcile: r.toReconcile.amount, over90: r.over90,
+      });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [hotelId]);
 
   useEffect(() => {
     Promise.all([
@@ -69,6 +89,21 @@ export function DashboardClient({
         <Stat label="ADR" value={formatCurrency(kpis?.averages.adr ?? 0, currencyCode)} note="Prix moyen par chambre occupée" />
         <Stat label="RevPAR" value={formatCurrency(kpis?.averages.revpar ?? 0, currencyCode)} note="Revenu par chambre disponible" />
       </section>
+
+      {finance && (
+        <section aria-label="Finance" className="panel mb-6">
+          <div className="flex items-center justify-between border-b border-ink-700 px-6 py-3 text-sm">
+            <span className="font-medium text-parchment">Finance au {formatDate(finance.asOf)}{finance.asOf < finance.requestedAsOf && <span className="ml-2 font-normal text-amber-400">dernière facture importée (aujourd&apos;hui : {formatDate(finance.requestedAsOf)})</span>}</span>
+            <span className="flex gap-4 text-ink-400"><Link href="/invoices" className="hover:text-parchment">Factures &amp; CA</Link><Link href="/receivables" className="hover:text-parchment">Créances</Link></span>
+          </div>
+          <div className="grid grid-cols-1 divide-y divide-ink-700 sm:grid-cols-2 sm:divide-x sm:divide-y-0 lg:grid-cols-4">
+            <FinanceStat label={`${finance.asOf < finance.requestedAsOf ? `CA du ${formatDate(finance.asOf)}` : 'CA du jour'} (TTC)`} value={formatCurrency(finance.day.ttc, currencyCode)} note={`HT ${formatCurrency(finance.day.ht, currencyCode)} · ${finance.day.count} facture(s)`} />
+            <FinanceStat label="CA du mois (TTC)" value={formatCurrency(finance.month.ttc, currencyCode)} note={`HT ${formatCurrency(finance.month.ht, currencyCode)} · ${finance.month.count} facture(s)`} />
+            <FinanceStat label={finance.asOf < finance.requestedAsOf ? `Encaissé le ${formatDate(finance.asOf)}` : 'Encaissé du jour'} value={formatCurrency(finance.cashedDay, currencyCode)} note="Factures payées ou en paiement ce jour" />
+            <FinanceStat label="Créances fiables" value={formatCurrency(finance.reliable, currencyCode)} note={`+ ${formatCurrency(finance.toReconcile, currencyCode)} à rapprocher · ${formatCurrency(finance.over90, currencyCode)} à plus de 90 j`} />
+          </div>
+        </section>
+      )}
 
       <section className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="panel p-5">
@@ -135,6 +170,28 @@ export function DashboardClient({
           </ul>
         )}
       </section>
+    </div>
+  );
+}
+
+interface FinanceStrip {
+  asOf: string;
+  requestedAsOf: string;
+  day: { ttc: number; ht: number; count: number };
+  month: { ttc: number; ht: number; count: number };
+  cashedDay: number;
+  reliable: number;
+  reliableCount: number;
+  toReconcile: number;
+  over90: number;
+}
+
+function FinanceStat({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <div className="px-6 py-4">
+      <div className="text-sm font-medium text-ink-400">{label}</div>
+      <div className="tabular mt-1 font-display text-2xl leading-tight tracking-tight text-parchment">{value}</div>
+      <div className="mt-1 text-xs text-ink-500">{note}</div>
     </div>
   );
 }

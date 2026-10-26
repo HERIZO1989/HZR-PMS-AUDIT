@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
-import { PAYMENT_STATUSES, summarizeRevenue, type InvoiceLite } from '@/lib/invoices';
+import { PAYMENT_STATUSES, effectiveAsOf, lastInvoiceDateOf, summarizeRevenue, type InvoiceLite } from '@/lib/invoices';
 import { summarizeDeposits, type DepositLite, type DepositStatus } from '@/lib/deposits';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
   const toParam = p.get('to');
   const from = fromParam && DATE_RE.test(fromParam) ? fromParam : `${asOf.slice(0, 7)}-01`;
   const to = toParam && DATE_RE.test(toParam) ? toParam : asOf;
+  // Tableau de bord : seule la synthese est utile (pas de liste, pas d'acomptes), pour un chargement rapide.
+  const summaryOnly = p.get('summaryOnly') === '1';
   const status = p.get('paymentStatus');
   const q = (p.get('q') ?? '').replace(/[,()%_\\]/g, ' ').trim().slice(0, 60);
 
@@ -59,19 +61,29 @@ export async function GET(req: NextRequest) {
         .eq('hotel_id', hotelId).in('payment_status', ['unpaid', 'partial'])
         .order('invoice_date').order('id').range(a, b)),
     ]);
-    // Acomptes : recus cette annee (heure de Madagascar, UTC+3) + tous ceux encore en attente, avec le statut de leur reservation.
-    const yearStartUtc = new Date(Date.UTC(Number(asOf.slice(0, 4)), 0, 1) - 3 * 3600 * 1000).toISOString();
-    type DepositRow = { amount: number; status: DepositStatus; received_at: string; resolved_at: string | null; reservations: { status: string } | { status: string }[] | null };
-    const depositRows = await fetchAll<DepositRow>((a, b) => supabase.from('reservation_deposits')
-      .select('amount, status, received_at, resolved_at, reservations(status)')
-      .eq('hotel_id', hotelId).or(`received_at.gte.${yearStartUtc},status.eq.held`)
-      .order('received_at').order('id').range(a, b));
-    const deposits = summarizeDeposits(depositRows.map((d): DepositLite => ({
-      amount: Number(d.amount), status: d.status, received_at: d.received_at, resolved_at: d.resolved_at,
-      reservation_status: (Array.isArray(d.reservations) ? d.reservations[0]?.status : d.reservations?.status) ?? null,
-    })), asOf);
+    let deposits = null as ReturnType<typeof summarizeDeposits> | null;
+    if (!summaryOnly) {
+      // Acomptes : recus cette annee (heure de Madagascar, UTC+3) + tous ceux encore en attente, avec le statut de leur reservation.
+      const yearStartUtc = new Date(Date.UTC(Number(asOf.slice(0, 4)), 0, 1) - 3 * 3600 * 1000).toISOString();
+      type DepositRow = { amount: number; status: DepositStatus; received_at: string; resolved_at: string | null; reservations: { status: string } | { status: string }[] | null };
+      const depositRows = await fetchAll<DepositRow>((a, b) => supabase.from('reservation_deposits')
+        .select('amount, status, received_at, resolved_at, reservations(status)')
+        .eq('hotel_id', hotelId).or(`received_at.gte.${yearStartUtc},status.eq.held`)
+        .order('received_at').order('id').range(a, b));
+      deposits = summarizeDeposits(depositRows.map((d): DepositLite => ({
+        amount: Number(d.amount), status: d.status, received_at: d.received_at, resolved_at: d.resolved_at,
+        reservation_status: (Array.isArray(d.reservations) ? d.reservations[0]?.status : d.reservations?.status) ?? null,
+      })), asOf);
+    }
 
-    const summary = summarizeRevenue([...yearRows, ...openRows].map((r) => ({ ...r, amount_ttc: Number(r.amount_ttc) })), asOf, vatRate);
+    const allRows = [...yearRows, ...openRows].map((r) => ({ ...r, amount_ttc: Number(r.amount_ttc) }));
+    // Les factures sont importees a la main : la date du jour peut etre posterieure a la derniere facture connue.
+    const lastInvoiceDate = lastInvoiceDateOf(allRows, asOf);
+    // Tableau de bord : on affiche le dernier jour reellement importe plutot qu'un « CA du jour » a zero trompeur.
+    const shownAsOf = summaryOnly ? effectiveAsOf(lastInvoiceDate, asOf) : asOf;
+    const summary = summarizeRevenue(allRows, shownAsOf, vatRate);
+
+    if (summaryOnly) return NextResponse.json({ asOf: shownAsOf, requestedAsOf: asOf, lastInvoiceDate, summary });
 
     let list = supabase.from('invoices').select(COLS).eq('hotel_id', hotelId).gte('invoice_date', from).lte('invoice_date', to);
     if (status && PAYMENT_STATUSES.some((s) => s.code === status)) list = list.eq('payment_status', status);
@@ -79,7 +91,7 @@ export async function GET(req: NextRequest) {
     const { data: invoices, error } = await list.order('invoice_date', { ascending: false }).order('id').limit(300);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ asOf, from, to, summary, deposits, invoices: invoices ?? [], listLimit: 300 });
+    return NextResponse.json({ asOf, from, to, lastInvoiceDate, summary, deposits, invoices: invoices ?? [], listLimit: 300 });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Erreur de lecture des factures' }, { status: 500 });
   }
