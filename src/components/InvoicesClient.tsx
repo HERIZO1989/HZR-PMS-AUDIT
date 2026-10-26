@@ -19,6 +19,7 @@ interface InvoiceRow {
 
 interface InvoicesResponse {
   asOf: string;
+  lastInvoiceDate?: string | null;
   from: string;
   to: string;
   summary: RevenueSummary;
@@ -115,6 +116,11 @@ export function InvoicesClient({ hotelId, currencyCode, canManage }: { hotelId: 
       </header>
 
       {error && <p role="alert" className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {data?.lastInvoiceDate && data.lastInvoiceDate < data.asOf && (
+        <p role="status" className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          La dernière facture importée date du {formatDate(data.lastInvoiceDate)} : le CA et les encaissements du {formatDate(data.asOf)} sont à zéro tant que l&apos;export Odoo n&apos;est pas réimporté.
+        </p>
+      )}
 
       {s && (
         <>

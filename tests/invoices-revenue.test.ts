@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { splitVat, summarizeRevenue, type InvoiceLite } from '../src/lib/invoices';
+import { effectiveAsOf, lastInvoiceDateOf, splitVat, summarizeRevenue, type InvoiceLite } from '../src/lib/invoices';
 
 const inv = (id: string, invoice_date: string, amount_ttc: number, payment_status: InvoiceLite['payment_status'], payment_date: string | null = null, due_date: string | null = null): InvoiceLite =>
   ({ id, invoice_date, amount_ttc, payment_status, payment_date, due_date });
@@ -40,5 +40,24 @@ describe('synthèse du CA, des encaissements et des créances', () => {
 
   it('cumule les créances toutes années confondues avec les échues et les partielles', () => {
     expect(s.receivables).toEqual({ count: 4, ttc: 450000, overdueCount: 2, overdueTtc: 290000, partialCount: 1 });
+  });
+});
+
+describe('fraîcheur des factures importées', () => {
+  const rows = [{ invoice_date: '2026-10-19' }, { invoice_date: '2026-10-05' }, { invoice_date: '2026-10-30' }];
+  it('retient la dernière facture connue jusqu’à la date demandée', () => {
+    expect(lastInvoiceDateOf(rows, '2026-10-25')).toBe('2026-10-19');
+    expect(lastInvoiceDateOf(rows, '2026-10-04')).toBeNull();
+    expect(lastInvoiceDateOf([], '2026-10-25')).toBeNull();
+  });
+  it('affiche le dernier jour réel plutôt qu’un jour à zéro, sans reculer quand les données sont à jour', () => {
+    expect(effectiveAsOf('2026-10-19', '2026-10-25')).toBe('2026-10-19');
+    expect(effectiveAsOf('2026-10-25', '2026-10-25')).toBe('2026-10-25');
+    expect(effectiveAsOf(null, '2026-10-25')).toBe('2026-10-25');
+  });
+  it('le CA du dernier jour importé n’est pas nul alors que celui d’aujourd’hui l’est', () => {
+    const inv = [{ id: '1', invoice_date: '2026-10-19', due_date: null, amount_ttc: 120000, payment_status: 'paid' as const, payment_date: '2026-10-19' }];
+    expect(summarizeRevenue(inv, '2026-10-25', 0.2).day.ttc).toBe(0);
+    expect(summarizeRevenue(inv, effectiveAsOf(lastInvoiceDateOf(inv, '2026-10-25'), '2026-10-25'), 0.2).day.ttc).toBe(120000);
   });
 });

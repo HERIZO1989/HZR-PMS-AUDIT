@@ -97,3 +97,13 @@ export function summarizeRevenue(rows: InvoiceLite[], asOf: string, vatRate: num
   }
   return out;
 }
+
+/** Date de la derniere facture connue jusqu'a `asOf` (null s'il n'y en a aucune). */
+export function lastInvoiceDateOf(rows: { invoice_date: string }[], asOf: string): string | null {
+  return rows.reduce<string | null>((m, r) => (r.invoice_date <= asOf && (m === null || r.invoice_date > m) ? r.invoice_date : m), null);
+}
+
+/** Les factures sont importees a la main : si la derniere facture est anterieure a la date demandee, on retient ce dernier jour reel plutot qu'un « CA du jour » a zero trompeur. */
+export function effectiveAsOf(lastInvoiceDate: string | null, asOf: string): string {
+  return lastInvoiceDate && lastInvoiceDate < asOf ? lastInvoiceDate : asOf;
+}
