@@ -12,6 +12,9 @@ const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'aoû
 export function PerformanceTable({ hotelId, currencyCode, asOf }: { hotelId: string; currencyCode: string; asOf: string }) {
   const [data, setData] = useState<PerformanceResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [recomputing, setRecomputing] = useState(false);
+  const [recomputeMsg, setRecomputeMsg] = useState<string | null>(null);
   const money = (n: number) => formatCurrency(n, currencyCode);
 
   useEffect(() => {
@@ -25,7 +28,21 @@ export function PerformanceTable({ hotelId, currencyCode, asOf }: { hotelId: str
       setData(json);
     })();
     return () => { cancelled = true; };
-  }, [hotelId, asOf]);
+  }, [hotelId, asOf, reloadKey]);
+
+  async function recompute() {
+    setRecomputing(true);
+    setRecomputeMsg(null);
+    const res = await fetch('/api/kpis/recompute', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: `${asOf.slice(0, 4)}-01-01`, to: asOf }),
+    });
+    const json = await res.json();
+    setRecomputing(false);
+    if (!res.ok) return setRecomputeMsg(json.error ?? 'Échec du recalcul');
+    setRecomputeMsg(`${json.days} jours recalculés (du ${json.from.split('-').reverse().join('/')} au ${json.to.split('-').reverse().join('/')}).`);
+    setReloadKey((k) => k + 1);
+  }
 
   if (error) return <p role="alert" className="mb-6 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>;
   if (!data || data.months.length === 0) return null;
@@ -35,7 +52,11 @@ export function PerformanceTable({ hotelId, currencyCode, asOf }: { hotelId: str
 
   return (
     <section aria-label="Performance mensuelle" className="panel mb-6 p-5">
-      <h2 className="mb-1 font-display text-lg">Performance {data.year} (HT)</h2>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display text-lg">Performance {data.year} (HT)</h2>
+        <button onClick={recompute} disabled={recomputing} className="btn-secondary btn-sm">{recomputing ? 'Recalcul…' : 'Recalculer les indicateurs'}</button>
+      </div>
+      {recomputeMsg && <p role="status" className="mb-2 text-sm text-emerald-700">{recomputeMsg}</p>}
       <p className="mb-3 text-xs text-black/60">RevPAR = hébergement des séjours ÷ chambres disponibles. TRevPAR et GOP = CA facturé HT (factures comptabilisées) ÷ chambres disponibles, moins les dépenses.</p>
       <div className="overflow-x-auto">
         <table className="w-full text-right text-sm tabular">

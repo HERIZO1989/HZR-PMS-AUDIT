@@ -36,7 +36,7 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
   const [staging, setStaging] = useState(false);
   const [applying, setApplying] = useState(false);
   const [result, setResult] = useState<StageResult | null>(null);
-  const [applySummary, setApplySummary] = useState<{ imported: number; invalid: number; skipped: number } | null>(
+  const [applySummary, setApplySummary] = useState<{ imported: number; invalid: number; skipped: number; kpi?: { from: string; to: string; days: number } | null; kpiError?: string } | null>(
     null
   );
   const [error, setError] = useState<string | null>(null);
@@ -196,6 +196,8 @@ export function ImportsClient({ hotelId, tenantId }: { hotelId: string; tenantId
               <span>
                 {applySummary.imported} lignes importées, {applySummary.invalid} rejetées, {applySummary.skipped}{' '}
                 ignorées.
+                {applySummary.kpi && <> Indicateurs recalculés : {applySummary.kpi.days} jours ({applySummary.kpi.from.split('-').reverse().join('/')} au {applySummary.kpi.to.split('-').reverse().join('/')}).</>}
+                {applySummary.kpiError && <> Les indicateurs n&apos;ont pas pu être recalculés ({applySummary.kpiError}) : utilisez « Recalculer les indicateurs » dans Factures &amp; CA.</>}
               </span>
               <button onClick={handleRollback} disabled={rollingBack} className="btn-secondary btn-sm bg-white">
                 {rollingBack ? 'Annulation…' : 'Annuler cet import'}
