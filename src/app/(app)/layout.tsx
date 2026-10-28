@@ -8,9 +8,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!session) redirect('/login');
 
   return (
-    <div className="min-h-screen bg-ink-800">
+    <div className="min-h-screen bg-ink-800 print:bg-white">
       <Sidebar displayName={session.displayName} showDemo={isPlatformAdmin(session)} />
-      <main className="mx-auto max-w-[1360px] px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-[1360px] px-6 py-8 print:max-w-none print:p-0">{children}</main>
     </div>
   );
 }

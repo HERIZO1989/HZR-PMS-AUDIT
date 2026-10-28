@@ -12,6 +12,7 @@ const ITEMS = [
   { href: '/night-audit', label: 'Night Audit' },
   { href: '/invoices', label: 'Factures & CA' },
   { href: '/receivables', label: 'Créances' },
+  { href: '/report', label: 'Rapport mensuel' },
   { href: '/expenses', label: 'Dépenses' },
   { href: '/audit', label: "Contrôles d'audit" },
   { href: '/imports', label: 'Imports' },
@@ -30,7 +31,7 @@ export function Sidebar({ displayName, showDemo = false }: { displayName: string
   const items = showDemo ? [...ITEMS, { href: '/demo', label: 'Démo' }] : ITEMS;
 
   return (
-    <header className="bg-navy text-white">
+    <header className="bg-navy text-white print:hidden">
       <div className="mx-auto flex max-w-[1360px] flex-wrap items-center gap-x-8 px-6">
         <Link href="/dashboard" className="flex items-center gap-3 py-3.5">
           <span className="flex h-8 w-8 items-center justify-center rounded border border-brass bg-navy-deep font-display text-base text-brass-light">
