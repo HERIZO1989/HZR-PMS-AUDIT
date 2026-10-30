@@ -5,6 +5,7 @@ import { formatCurrency, formatDate } from '@/lib/formatters';
 import { StatusBadge, VipBadge } from '@/components/Badges';
 import { FolioPanel } from '@/components/FolioPanel';
 import { DepositPanel } from '@/components/DepositPanel';
+import { AutoCheckInBar, RevertCheckInDialog } from '@/components/AutoCheckInPanels';
 
 interface Reservation {
   id: string;
@@ -39,6 +40,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openFolioFor, setOpenFolioFor] = useState<string | null>(null);
   const [openDepositFor, setOpenDepositFor] = useState<string | null>(null);
+  const [revertFor, setRevertFor] = useState<string | null>(null);
 
   // Formulaire de creation (PARTIE I)
   const [showForm, setShowForm] = useState(false);
@@ -134,6 +136,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
         <div>
           <h1 className="page-title">Réservations</h1>
           <p className="page-subtitle">{reservations.length} dossiers les plus récents</p>
+          <div className="mt-3"><AutoCheckInBar onDone={load} /></div>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
@@ -264,6 +267,9 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
                       <button onClick={() => setOpenFolioFor(r.id)} className="row-action text-ink-400 hover:bg-ink-800 hover:text-parchment">
                         Folio
                       </button>
+                      <button onClick={() => setRevertFor(r.id)} className="row-action text-wine hover:bg-wine-tint">
+                        Annuler le check-in
+                      </button>
                     </>
                   )}
                   {r.status === 'checked_out' && (
@@ -279,6 +285,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
       </table>
       </div>
 
+      {revertFor && <RevertCheckInDialog reservationId={revertFor} onClose={(changed) => { setRevertFor(null); if (changed) load(); }} />}
       {openDepositFor && <DepositPanel reservationId={openDepositFor} onClose={() => { setOpenDepositFor(null); load(); }} />}
       {openFolioFor && <FolioPanel reservationId={openFolioFor} onClose={() => { setOpenFolioFor(null); load(); }} />}
     </div>

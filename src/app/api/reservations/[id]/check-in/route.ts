@@ -15,12 +15,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const body = await req.json().catch(() => ({}));
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.rpc('check_in_reservation', {
-    p_reservation_id: params.id,
-    p_hotel_id: session!.hotelId,
-    p_room_id: body?.roomId ?? null,
-    p_staff_user_id: session!.staffUserId,
-  });
+  // Sans chambre choisie, la chambre est attribuee automatiquement (type reserve, propre, libre) : les reservations
+  // importees d'Odoo n'ont aucune chambre assignee, ce qui faisait refuser tous les check-in.
+  const { data, error } = body?.roomId
+    ? await supabase.rpc('check_in_reservation', {
+        p_reservation_id: params.id, p_hotel_id: session!.hotelId, p_room_id: body.roomId, p_staff_user_id: session!.staffUserId,
+      })
+    : await supabase.rpc('auto_check_in_reservation', {
+        p_reservation_id: params.id, p_hotel_id: session!.hotelId, p_staff_user_id: session!.staffUserId,
+      });
 
   if (error) {
     const status = error.code === '23P01' ? 409 : 422;

@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { sendCriticalAlertDigest } from '@/lib/email';
 import { runAuditAlerts } from '@/lib/alerts/auditAlerts';
+import { runScheduledAutoCheckIn } from '@/lib/autoCheckIn';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -26,7 +27,10 @@ export async function POST(req: NextRequest) {
   try {
     const results = await runAuditAlerts(getSupabaseAdmin(), sendCriticalAlertDigest);
     const failed = results.filter((r) => r.error).length;
-    return NextResponse.json({ hotels: results.length, failed, results }, { status: failed ? 207 : 200 });
+    // Meme routine toutes les 2 h : check-in automatique des arrivees du jour pour les hotels qui l'ont active.
+    // Un echec ici ne fait pas echouer les alertes (le detail est renvoye pour le journal).
+    const autoCheckIn = await runScheduledAutoCheckIn(getSupabaseAdmin()).catch((e) => [{ error: e instanceof Error ? e.message : 'Erreur' }]);
+    return NextResponse.json({ hotels: results.length, failed, results, autoCheckIn }, { status: failed ? 207 : 200 });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Erreur' }, { status: 500 });
   }
