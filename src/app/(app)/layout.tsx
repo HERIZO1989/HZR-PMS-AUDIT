@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
+import { AutoCheckInRunner } from '@/components/AutoCheckInRunner';
 import { getSession } from '@/lib/session';
 import { isPlatformAdmin } from '@/lib/platformAdmin';
 
@@ -10,7 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-ink-800 print:bg-white">
       <Sidebar displayName={session.displayName} showDemo={isPlatformAdmin(session)} />
-      <main className="mx-auto max-w-[1360px] px-6 py-8 print:max-w-none print:p-0">{children}</main>
+      <main className="mx-auto max-w-[1360px] px-6 py-8 print:max-w-none print:p-0"><AutoCheckInRunner />{children}</main>
     </div>
   );
 }
