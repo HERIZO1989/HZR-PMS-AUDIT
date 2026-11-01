@@ -23,6 +23,10 @@ export function localDateHour(now: Date, timeZone: string): { date: string; hour
 
 export const shouldRunAutoCheckIn = (hour: number) => hour >= AUTO_CHECK_IN_FROM_HOUR;
 
+/** Delai minimal entre deux declenchements depuis un navigateur (le traitement est idempotent : ce delai evite seulement des appels inutiles). */
+export const CLIENT_RUN_INTERVAL_MS = 30 * 60 * 1000;
+export const clientRunDue = (lastRunMs: number | null, nowMs: number) => lastRunMs === null || !Number.isFinite(lastRunMs) || nowMs - lastRunMs >= CLIENT_RUN_INTERVAL_MS;
+
 /** Resume lisible : « 11 enregistrées, 2 ignorées, 1 à faire à la main ». */
 export function summarizeAutoCheckIn(r: Pick<AutoCheckInResult, 'checked_in' | 'skipped' | 'failed'>): string {
   const parts = [`${r.checked_in} enregistrée(s)`];

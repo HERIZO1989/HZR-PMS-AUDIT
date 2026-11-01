@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTO_CHECK_IN_FROM_HOUR, localDateHour, shouldRunAutoCheckIn, summarizeAutoCheckIn } from '../src/lib/autoCheckIn';
+import { AUTO_CHECK_IN_FROM_HOUR, CLIENT_RUN_INTERVAL_MS, clientRunDue, localDateHour, shouldRunAutoCheckIn, summarizeAutoCheckIn } from '../src/lib/autoCheckIn';
 
 describe('heure locale de l’hôtel', () => {
   it('Madagascar (UTC+3) : le jour local peut précéder ou suivre le jour UTC', () => {
@@ -32,5 +32,18 @@ describe('résumé du lot', () => {
     expect(summarizeAutoCheckIn({ checked_in: 11, skipped: 2, failed: 1 })).toBe('11 enregistrée(s), 2 ignorée(s), 1 à faire à la main');
     expect(summarizeAutoCheckIn({ checked_in: 3, skipped: 0, failed: 0 })).toBe('3 enregistrée(s)');
     expect(summarizeAutoCheckIn({ checked_in: 0, skipped: 0, failed: 0 })).toBe('0 enregistrée(s)');
+  });
+});
+
+describe('déclenchement depuis le navigateur', () => {
+  it('au plus une fois toutes les 30 minutes, et toujours la première fois', () => {
+    const now = Date.parse('2026-11-01T10:46:00Z');
+    expect(clientRunDue(null, now)).toBe(true);
+    expect(clientRunDue(now - 5 * 60 * 1000, now)).toBe(false);
+    expect(clientRunDue(now - CLIENT_RUN_INTERVAL_MS, now)).toBe(true);
+    expect(clientRunDue(now - 3 * 3600 * 1000, now)).toBe(true);
+  });
+  it('une valeur illisible ne bloque jamais le déclenchement', () => {
+    expect(clientRunDue(Number.NaN, 1000)).toBe(true);
   });
 });

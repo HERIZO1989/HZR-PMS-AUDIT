@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
-import { localDateHour, runAutoCheckIn } from '@/lib/autoCheckIn';
+import { localDateHour, runAutoCheckIn, shouldRunAutoCheckIn } from '@/lib/autoCheckIn';
 
 /** Check-in immediat de toutes les arrivees du jour (ou d'une date donnee), chambres choisies automatiquement. */
 export async function POST(req: NextRequest) {
@@ -11,6 +11,13 @@ export async function POST(req: NextRequest) {
   }
   const body = await req.json().catch(() => ({}));
   const supabase = getSupabaseAdmin();
+  // Declenchement automatique depuis le navigateur : n'a de sens que si l'hotel a active l'option et que l'heure est venue.
+  if (body?.auto === true) {
+    const { data: h } = await supabase.from('hotels').select('auto_check_in_enabled, timezone').eq('id', session.hotelId).single();
+    if (!h?.auto_check_in_enabled || !shouldRunAutoCheckIn(localDateHour(new Date(), h.timezone ?? 'UTC').hour)) {
+      return NextResponse.json({ date: null, checked_in: 0, skipped: 0, failed: 0, results: [], depositsApplied: 0, depositErrors: [], notDue: true });
+    }
+  }
   const { data: hotel } = await supabase.from('hotels').select('timezone').eq('id', session.hotelId).single();
   const today = localDateHour(new Date(), hotel?.timezone ?? 'UTC').date;
   const date = typeof body?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date) ? body.date : today;

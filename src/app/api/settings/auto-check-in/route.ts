@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
-import { AUTO_CHECK_IN_FROM_HOUR } from '@/lib/autoCheckIn';
+import { AUTO_CHECK_IN_FROM_HOUR, localDateHour, shouldRunAutoCheckIn } from '@/lib/autoCheckIn';
 
 /** Lecture (reservations.manage) et reglage (admin.full) du check-in automatique quotidien de l'hotel. */
 export async function GET(req: NextRequest) {
   const session = await getSessionFromRequest(req);
   if (!session || !hasPermission(session, 'reservations.manage')) return NextResponse.json({ error: 'Permission "reservations.manage" requise' }, { status: 403 });
-  const { data } = await getSupabaseAdmin().from('hotels').select('auto_check_in_enabled').eq('id', session.hotelId).single();
-  return NextResponse.json({ enabled: Boolean(data?.auto_check_in_enabled), fromHour: AUTO_CHECK_IN_FROM_HOUR, canChange: hasPermission(session, 'admin.full') });
+  const { data } = await getSupabaseAdmin().from('hotels').select('auto_check_in_enabled, timezone').eq('id', session.hotelId).single();
+  const enabled = Boolean(data?.auto_check_in_enabled);
+  // dueNow : actif ET l'heure locale de l'hotel a atteint l'heure d'arrivee habituelle. Le navigateur declenche alors le traitement
+  // sans attendre la routine planifiee (GitHub la retarde : environ une execution par jour en pratique).
+  const dueNow = enabled && shouldRunAutoCheckIn(localDateHour(new Date(), data?.timezone ?? 'UTC').hour);
+  return NextResponse.json({ enabled, dueNow, fromHour: AUTO_CHECK_IN_FROM_HOUR, canChange: hasPermission(session, 'admin.full') });
 }
 
 export async function POST(req: NextRequest) {
