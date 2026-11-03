@@ -6,6 +6,8 @@ import { StatusBadge, VipBadge } from '@/components/Badges';
 import { FolioPanel } from '@/components/FolioPanel';
 import { DepositPanel } from '@/components/DepositPanel';
 import { AutoCheckInBar, RevertCheckInDialog } from '@/components/AutoCheckInPanels';
+import { RoomPickerDialog } from '@/components/RoomPickerDialog';
+import { shouldOfferRoomPicker } from '@/lib/autoCheckIn';
 
 interface Reservation {
   id: string;
@@ -41,6 +43,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
   const [openFolioFor, setOpenFolioFor] = useState<string | null>(null);
   const [openDepositFor, setOpenDepositFor] = useState<string | null>(null);
   const [revertFor, setRevertFor] = useState<string | null>(null);
+  const [pickFor, setPickFor] = useState<{ id: string; reason: string } | null>(null);
 
   // Formulaire de creation (PARTIE I)
   const [showForm, setShowForm] = useState(false);
@@ -122,6 +125,8 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
     const res = await fetch(`/api/reservations/${id}/${action}`, { method: 'POST' });
     const data = await res.json();
     setBusyId(null);
+    // Le systeme n'a pas pu choisir la chambre seul (type manquant, plus de chambre du type) : on propose de la choisir a la main.
+    if (!res.ok && action === 'check-in' && shouldOfferRoomPicker(data.error)) return setPickFor({ id, reason: data.error });
     if (!res.ok) return setActionError(data.error);
     // Le check-in reste valide meme si le report de l'acompte sur le folio echoue : on le signale pour relance.
     if (data.depositsError) setActionError(`Check-in effectué, mais l'acompte n'a pas pu être reporté sur le folio : ${data.depositsError}`);
@@ -285,6 +290,7 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
       </table>
       </div>
 
+      {pickFor && <RoomPickerDialog reservationId={pickFor.id} reason={pickFor.reason} onClose={(done) => { setPickFor(null); if (done) load(); }} />}
       {revertFor && <RevertCheckInDialog reservationId={revertFor} onClose={(changed) => { setRevertFor(null); if (changed) load(); }} />}
       {openDepositFor && <DepositPanel reservationId={openDepositFor} onClose={() => { setOpenDepositFor(null); load(); }} />}
       {openFolioFor && <FolioPanel reservationId={openFolioFor} onClose={() => { setOpenFolioFor(null); load(); }} />}

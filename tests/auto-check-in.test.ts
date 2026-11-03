@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AUTO_CHECK_IN_FROM_HOUR, CLIENT_RUN_INTERVAL_MS, clientRunDue, localDateHour, shouldRunAutoCheckIn, summarizeAutoCheckIn } from '../src/lib/autoCheckIn';
+import { AUTO_CHECK_IN_FROM_HOUR, CLIENT_RUN_INTERVAL_MS, clientRunDue, localDateHour, shouldOfferRoomPicker, shouldRunAutoCheckIn, summarizeAutoCheckIn } from '../src/lib/autoCheckIn';
 
 describe('heure locale de l’hôtel', () => {
   it('Madagascar (UTC+3) : le jour local peut précéder ou suivre le jour UTC', () => {
@@ -45,5 +45,14 @@ describe('déclenchement depuis le navigateur', () => {
   });
   it('une valeur illisible ne bloque jamais le déclenchement', () => {
     expect(clientRunDue(Number.NaN, 1000)).toBe(true);
+  });
+});
+
+describe('choix de la chambre à la main', () => {
+  it('proposé quand le système ne peut pas choisir seul', () => {
+    for (const m of ['Type de chambre manquant : choisir une chambre', 'Aucune chambre libre du type Twin', 'Aucune chambre assignée : fournir room_id']) expect(shouldOfferRoomPicker(m)).toBe(true);
+  });
+  it('pas proposé pour les autres erreurs', () => {
+    for (const m of ['Check-in impossible : statut actuel checked_in', 'Reservation introuvable', '', null, undefined]) expect(shouldOfferRoomPicker(m)).toBe(false);
   });
 });
