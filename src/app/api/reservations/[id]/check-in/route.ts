@@ -37,6 +37,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     p_hotel_id: session!.hotelId,
     p_staff_user_id: session!.staffUserId,
   });
+  // Chambre choisie a la main pour une reservation sans type (cas frequent des imports Odoo) : on renseigne aussi son type, pour les analyses par categorie.
+  if (body?.roomId) {
+    const { data: room } = await supabase.from('rooms').select('room_type_id').eq('id', body.roomId).eq('hotel_id', session!.hotelId).maybeSingle();
+    if (room?.room_type_id) {
+      await supabase.from('reservations').update({ room_type_id: room.room_type_id }).eq('id', params.id).eq('hotel_id', session!.hotelId).is('room_type_id', null);
+    }
+  }
   return NextResponse.json({
     reservation: data,
     depositsApplied: depositError ? 0 : Number(applied ?? 0),

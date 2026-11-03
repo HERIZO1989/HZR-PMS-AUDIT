@@ -68,3 +68,8 @@ export async function runScheduledAutoCheckIn(supabase: SupabaseClient, now: Dat
   }
   return out;
 }
+
+/** Le systeme n'a pas pu choisir seul : l'ecran propose alors de choisir la chambre a la main (type manquant, plus de chambre du type, aucune chambre assignee). */
+export function shouldOfferRoomPicker(message: string | null | undefined): boolean {
+  return /type de chambre manquant|aucune chambre libre|aucune chambre assign/i.test(message ?? '');
+}
