@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { summarizeAutoCheckIn, type AutoCheckInRun } from '@/lib/autoCheckIn';
+import type { OverdueRow } from '@/lib/overdueArrivals';
 
 interface Settings { enabled: boolean; fromHour: number; canChange: boolean }
 
@@ -11,6 +12,7 @@ export function AutoCheckInBar({ onDone }: { onDone: () => void }) {
   const [running, setRunning] = useState(false);
   const [run, setRun] = useState<AutoCheckInRun | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [overdueOpen, setOverdueOpen] = useState(false);
 
   useEffect(() => {
     fetch('/api/settings/auto-check-in').then(async (r) => { if (r.ok) setSettings(await r.json()); }).catch(() => undefined);
@@ -39,6 +41,7 @@ export function AutoCheckInBar({ onDone }: { onDone: () => void }) {
     <>
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={runNow} disabled={running} className="btn-secondary">{running ? 'Check-in en cours…' : 'Check-in automatique du jour'}</button>
+        <button onClick={() => setOverdueOpen(true)} className="btn-secondary">Arrivées en retard</button>
         {settings && (
           <label className="flex items-center gap-2 text-sm text-ink-400" title={settings.canChange ? '' : 'Réservé à l’administrateur'}>
             <input type="checkbox" checked={settings.enabled} disabled={!settings.canChange} onChange={(e) => void toggle(e.target.checked)} />
@@ -47,6 +50,7 @@ export function AutoCheckInBar({ onDone }: { onDone: () => void }) {
         )}
       </div>
       {error && <p role="alert" className="mt-2 rounded-sm bg-wine-tint px-3 py-2 text-sm text-wine">{error}</p>}
+      {overdueOpen && <OverdueArrivalsDialog onClose={(changed) => { setOverdueOpen(false); if (changed) onDone(); }} />}
 
       {run && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/50 p-4" onClick={() => setRun(null)}>
@@ -116,6 +120,85 @@ export function RevertCheckInDialog({ reservationId, onClose }: { reservationId:
           <button onClick={() => onClose(false)} className="btn-secondary btn-sm">Retour</button>
           <button onClick={submit} disabled={busy} className="btn-primary btn-sm">{busy ? 'En cours…' : 'Confirmer'}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const KIND_LABEL: Record<OverdueRow['kind'], string> = { auto: 'Enregistrable', manual: 'À faire à la main', blocked: 'Non automatique' };
+const KIND_STYLE: Record<OverdueRow['kind'], string> = { auto: 'text-emerald-400', manual: 'text-amber-400', blocked: 'text-ink-400' };
+
+/** Sejours en cours jamais enregistres : apercu, puis enregistrement en un clic de ceux dont la chambre peut etre choisie automatiquement. */
+export function OverdueArrivalsDialog({ onClose }: { onClose: (changed: boolean) => void }) {
+  const [rows, setRows] = useState<OverdueRow[] | null>(null);
+  const [today, setToday] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<(AutoCheckInRun & { kpi?: { from: string; to: string; days: number } | null }) | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/reservations/overdue-arrivals').then(async (r) => {
+      const json = await r.json();
+      if (!r.ok) return setError(json.error ?? 'Chargement impossible');
+      setRows(json.rows); setToday(json.today);
+    }).catch(() => setError('Chargement impossible'));
+  }, []);
+
+  const auto = (rows ?? []).filter((r) => r.kind === 'auto');
+  const dmy = (d: string) => d.split('-').reverse().join('/');
+
+  async function submit() {
+    if (!window.confirm(`Enregistrer ${auto.length} séjour(s) en cours, avec attribution automatique des chambres ?`)) return;
+    setBusy(true); setError(null);
+    const res = await fetch('/api/reservations/overdue-arrivals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const json = await res.json();
+    setBusy(false);
+    if (!res.ok) return setError(json.error ?? 'Échec');
+    setDone(json);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/50 p-4" onClick={() => onClose(Boolean(done))}>
+      <div role="dialog" aria-modal="true" aria-label="Arrivées en retard" className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-md border border-ink-700 bg-ink-900 p-6 shadow-pop" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="font-display text-2xl tracking-tight text-parchment">Arrivées en retard</h2>
+          <button onClick={() => onClose(Boolean(done))} className="btn-secondary btn-sm">Fermer</button>
+        </div>
+        <p className="mb-4 text-sm text-ink-400">Clients dont le séjour est en cours{today ? ` au ${dmy(today)}` : ''} mais jamais enregistrés. Tant qu&apos;ils ne le sont pas, ils ne comptent ni dans l&apos;occupation ni dans le revenu.</p>
+        {error && <p role="alert" className="mb-3 rounded-sm bg-wine-tint px-3 py-2 text-sm text-wine">{error}</p>}
+        {!rows && !error && <p className="text-ink-400">Chargement…</p>}
+
+        {done ? (
+          <div>
+            <p className="mb-2 text-sm text-parchment">{summarizeAutoCheckIn(done)}{done.depositsApplied > 0 ? ` · acomptes déduits : ${done.depositsApplied.toLocaleString('fr-FR')}` : ''}</p>
+            {done.kpi && <p className="mb-2 text-sm text-emerald-400">Indicateurs recalculés : {done.kpi.days} jours ({dmy(done.kpi.from)} au {dmy(done.kpi.to)}).</p>}
+            {done.depositErrors.length > 0 && <p role="alert" className="mb-2 rounded-sm bg-wine-tint px-3 py-2 text-sm text-wine">Acompte non reporté : {done.depositErrors.join(' ; ')}</p>}
+            <ul className="divide-y divide-ink-700/70 text-sm">
+              {done.results.map((r) => (
+                <li key={r.reservation_id} className="flex justify-between gap-3 py-2"><span className="tabular text-ink-400">{r.confirmation_number}</span><span className={r.outcome === 'checked_in' ? 'text-emerald-400' : 'text-wine'}>{r.outcome === 'checked_in' ? `Chambre ${r.room ?? ''}` : r.reason}</span></li>
+              ))}
+            </ul>
+          </div>
+        ) : rows && (
+          <>
+            {rows.length === 0 ? <p className="text-sm text-emerald-400">Aucun séjour en cours en attente d&apos;enregistrement.</p> : (
+              <>
+                <ul className="mb-4 divide-y divide-ink-700/70 text-sm">
+                  {rows.map((r) => (
+                    <li key={r.id} className="py-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <span><span className="tabular text-parchment">{r.confirmation_number}</span><span className="block text-xs text-ink-400">{dmy(r.arrival_date)} → {dmy(r.departure_date)} · {r.typeName ?? 'sans type'}</span></span>
+                        <span className={`text-right ${KIND_STYLE[r.kind]}`}>{KIND_LABEL[r.kind]}{r.reason && <span className="block text-xs text-ink-400">{r.reason}</span>}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mb-3 text-xs text-ink-400">« À faire à la main » : utilisez <b>Check-in</b> sur la ligne de la réservation pour choisir la chambre. Un client qui n&apos;est jamais venu : enregistrez-le puis utilisez <b>Annuler le check-in</b> (no-show).</p>
+                <button onClick={submit} disabled={busy || auto.length === 0} className="btn-primary">{busy ? 'Enregistrement…' : `Enregistrer les ${auto.length} séjour(s) enregistrable(s)`}</button>
+              </>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
