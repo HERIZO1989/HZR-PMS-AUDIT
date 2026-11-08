@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { summarizeAutoCheckIn, type AutoCheckInRun } from '@/lib/autoCheckIn';
 import type { OverdueRow } from '@/lib/overdueArrivals';
+import { RoomPickerDialog } from '@/components/RoomPickerDialog';
 
 interface Settings { enabled: boolean; fromHour: number; canChange: boolean }
 
@@ -13,6 +14,7 @@ export function AutoCheckInBar({ onDone }: { onDone: () => void }) {
   const [run, setRun] = useState<AutoCheckInRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [overdueOpen, setOverdueOpen] = useState(false);
+  const [pickRun, setPickRun] = useState<{ id: string; reason: string } | null>(null);
 
   useEffect(() => {
     fetch('/api/settings/auto-check-in').then(async (r) => { if (r.ok) setSettings(await r.json()); }).catch(() => undefined);
@@ -50,6 +52,7 @@ export function AutoCheckInBar({ onDone }: { onDone: () => void }) {
         )}
       </div>
       {error && <p role="alert" className="mt-2 rounded-sm bg-wine-tint px-3 py-2 text-sm text-wine">{error}</p>}
+      {pickRun && <RoomPickerDialog reservationId={pickRun.id} reason={pickRun.reason} onClose={(done) => { setPickRun(null); if (done) { setRun((cur) => (cur ? { ...cur, results: cur.results.filter((x) => x.reservation_id !== pickRun.id) } : cur)); onDone(); } }} />}
       {overdueOpen && <OverdueArrivalsDialog onClose={(changed) => { setOverdueOpen(false); if (changed) onDone(); }} />}
 
       {run && (
@@ -65,8 +68,9 @@ export function AutoCheckInBar({ onDone }: { onDone: () => void }) {
               {run.results.map((r) => (
                 <li key={r.reservation_id} className="flex items-start justify-between gap-3 py-2">
                   <span className="tabular text-ink-400">{r.confirmation_number}</span>
-                  <span className={r.outcome === 'checked_in' ? 'text-emerald-400' : r.outcome === 'failed' ? 'text-wine' : 'text-ink-400'}>
+                  <span className={`text-right ${r.outcome === 'checked_in' ? 'text-emerald-400' : r.outcome === 'failed' ? 'text-wine' : 'text-ink-400'}`}>
                     {r.outcome === 'checked_in' ? `Chambre ${r.room}` : r.reason}
+                    {r.outcome === 'failed' && <button onClick={() => setPickRun({ id: r.reservation_id, reason: r.reason ?? '' })} className="mt-1 block w-full rounded border border-ink-700 px-2 py-0.5 text-xs text-parchment hover:bg-ink-800">Choisir une chambre</button>}
                   </span>
                 </li>
               ))}
@@ -135,14 +139,18 @@ export function OverdueArrivalsDialog({ onClose }: { onClose: (changed: boolean)
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<(AutoCheckInRun & { kpi?: { from: string; to: string; days: number } | null }) | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pick, setPick] = useState<{ id: string; reason: string } | null>(null);
+  const [changed, setChanged] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/reservations/overdue-arrivals').then(async (r) => {
+  async function loadRows() {
+    try {
+      const r = await fetch('/api/reservations/overdue-arrivals');
       const json = await r.json();
       if (!r.ok) return setError(json.error ?? 'Chargement impossible');
-      setRows(json.rows); setToday(json.today);
-    }).catch(() => setError('Chargement impossible'));
-  }, []);
+      setError(null); setRows(json.rows); setToday(json.today);
+    } catch { setError('Chargement impossible'); }
+  }
+  useEffect(() => { void loadRows(); }, []);
 
   const auto = (rows ?? []).filter((r) => r.kind === 'auto');
   const dmy = (d: string) => d.split('-').reverse().join('/');
@@ -158,16 +166,17 @@ export function OverdueArrivalsDialog({ onClose }: { onClose: (changed: boolean)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/50 p-4" onClick={() => onClose(Boolean(done))}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-deep/50 p-4" onClick={() => onClose(Boolean(done) || changed)}>
       <div role="dialog" aria-modal="true" aria-label="Arrivées en retard" className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-md border border-ink-700 bg-ink-900 p-6 shadow-pop" onClick={(e) => e.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-display text-2xl tracking-tight text-parchment">Arrivées en retard</h2>
-          <button onClick={() => onClose(Boolean(done))} className="btn-secondary btn-sm">Fermer</button>
+          <button onClick={() => onClose(Boolean(done) || changed)} className="btn-secondary btn-sm">Fermer</button>
         </div>
         <p className="mb-4 text-sm text-ink-400">Clients dont le séjour est en cours{today ? ` au ${dmy(today)}` : ''} mais jamais enregistrés. Tant qu&apos;ils ne le sont pas, ils ne comptent ni dans l&apos;occupation ni dans le revenu.</p>
         {error && <p role="alert" className="mb-3 rounded-sm bg-wine-tint px-3 py-2 text-sm text-wine">{error}</p>}
         {!rows && !error && <p className="text-ink-400">Chargement…</p>}
 
+        {pick && <RoomPickerDialog reservationId={pick.id} reason={pick.reason} onClose={(ok) => { setPick(null); if (ok) { setChanged(true); void loadRows(); } }} />}
         {done ? (
           <div>
             <p className="mb-2 text-sm text-parchment">{summarizeAutoCheckIn(done)}{done.depositsApplied > 0 ? ` · acomptes déduits : ${done.depositsApplied.toLocaleString('fr-FR')}` : ''}</p>
@@ -188,12 +197,14 @@ export function OverdueArrivalsDialog({ onClose }: { onClose: (changed: boolean)
                     <li key={r.id} className="py-2">
                       <div className="flex items-start justify-between gap-3">
                         <span><span className="tabular text-parchment">{r.confirmation_number}</span><span className="block text-xs text-ink-400">{dmy(r.arrival_date)} → {dmy(r.departure_date)} · {r.typeName ?? 'sans type'}</span></span>
-                        <span className={`text-right ${KIND_STYLE[r.kind]}`}>{KIND_LABEL[r.kind]}{r.reason && <span className="block text-xs text-ink-400">{r.reason}</span>}</span>
+                        <span className={`text-right ${KIND_STYLE[r.kind]}`}>{KIND_LABEL[r.kind]}{r.reason && <span className="block text-xs text-ink-400">{r.reason}</span>}
+                          {r.kind === 'manual' && <button onClick={() => setPick({ id: r.id, reason: r.reason ?? '' })} className="mt-1 rounded border border-ink-700 px-2 py-0.5 text-xs text-parchment hover:bg-ink-800">Choisir une chambre</button>}
+                        </span>
                       </div>
                     </li>
                   ))}
                 </ul>
-                <p className="mb-3 text-xs text-ink-400">« À faire à la main » : utilisez <b>Check-in</b> sur la ligne de la réservation pour choisir la chambre. Un client qui n&apos;est jamais venu : enregistrez-le puis utilisez <b>Annuler le check-in</b> (no-show).</p>
+                <p className="mb-3 text-xs text-ink-400">« À faire à la main » : cliquez sur <b>Choisir une chambre</b> sur la ligne. Un client qui n&apos;est jamais venu : enregistrez-le puis utilisez <b>Annuler le check-in</b> (no-show) dans la liste des réservations.</p>
                 <button onClick={submit} disabled={busy || auto.length === 0} className="btn-primary">{busy ? 'Enregistrement…' : `Enregistrer les ${auto.length} séjour(s) enregistrable(s)`}</button>
               </>
             )}

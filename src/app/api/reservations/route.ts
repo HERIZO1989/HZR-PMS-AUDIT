@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getSessionFromRequest, hasPermission } from '@/lib/session';
 import { sendReservationConfirmation } from '@/lib/email';
+import { cleanSearch, parseReservationView, viewQuery } from '@/lib/reservationViews';
+import { localDateHour } from '@/lib/autoCheckIn';
 
 export async function GET(req: NextRequest) {
   const hotelId = req.nextUrl.searchParams.get('hotelId');
@@ -13,7 +15,13 @@ export async function GET(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+  // Vue demandee (arrivees du jour par defaut) : sans cela, la liste ne montrait que les 100 arrivees les plus lointaines.
+  const { data: hotel } = await supabase.from('hotels').select('timezone').eq('id', hotelId).single();
+  const today = localDateHour(new Date(), hotel?.timezone ?? 'UTC').date;
+  const search = cleanSearch(req.nextUrl.searchParams.get('q'));
+  const view = search ? 'all' : parseReservationView(req.nextUrl.searchParams.get('view'));
+  const vq = viewQuery(view, today);
+  let query = supabase
     .from('reservations')
     .select(
       `id, confirmation_number, status, channel, arrival_date, departure_date, total_amount, currency_code,
@@ -22,12 +30,20 @@ export async function GET(req: NextRequest) {
        room_types ( name ),
        rooms ( room_number )`
     )
-    .eq('hotel_id', hotelId)
-    .order('arrival_date', { ascending: false })
-    .limit(100);
+    .eq('hotel_id', hotelId);
+  if (vq.statuses) query = query.in('status', vq.statuses);
+  if (vq.arrivalEq) query = query.eq('arrival_date', vq.arrivalEq);
+  if (vq.arrivalLt) query = query.lt('arrival_date', vq.arrivalLt);
+  if (vq.arrivalGt) query = query.gt('arrival_date', vq.arrivalGt);
+  if (vq.departureGt) query = query.gt('departure_date', vq.departureGt);
+  if (search) query = query.ilike('confirmation_number', `%${search}%`);
+  const { data, error } = await query
+    .order('arrival_date', { ascending: vq.ascending })
+    .order('confirmation_number')
+    .limit(vq.limit);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ reservations: data });
+  return NextResponse.json({ reservations: data, view, today });
 }
 
 /**

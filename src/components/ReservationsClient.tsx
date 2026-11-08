@@ -8,6 +8,7 @@ import { DepositPanel } from '@/components/DepositPanel';
 import { AutoCheckInBar, RevertCheckInDialog } from '@/components/AutoCheckInPanels';
 import { RoomPickerDialog } from '@/components/RoomPickerDialog';
 import { shouldOfferRoomPicker } from '@/lib/autoCheckIn';
+import { RESERVATION_VIEWS, type ReservationView } from '@/lib/reservationViews';
 
 interface Reservation {
   id: string;
@@ -44,6 +45,8 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
   const [openDepositFor, setOpenDepositFor] = useState<string | null>(null);
   const [revertFor, setRevertFor] = useState<string | null>(null);
   const [pickFor, setPickFor] = useState<{ id: string; reason: string } | null>(null);
+  const [view, setView] = useState<ReservationView>('today');
+  const [search, setSearch] = useState('');
 
   // Formulaire de creation (PARTIE I)
   const [showForm, setShowForm] = useState(false);
@@ -63,13 +66,19 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
 
   function load() {
     setLoading(true);
-    fetch(`/api/reservations?hotelId=${hotelId}`)
+    const params = new URLSearchParams({ hotelId, view });
+    if (search.trim()) params.set('q', search.trim());
+    fetch(`/api/reservations?${params}`)
       .then((r) => r.json())
       .then((d) => setReservations(d.reservations ?? []))
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [hotelId]);
+  useEffect(() => {
+    const t = setTimeout(load, search ? 300 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hotelId, view, search]);
 
   useEffect(() => {
     if (showForm && roomTypes.length === 0) {
@@ -140,7 +149,14 @@ export function ReservationsClient({ hotelId }: { hotelId: string }) {
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="page-title">Réservations</h1>
-          <p className="page-subtitle">{reservations.length} dossiers les plus récents</p>
+          <p className="page-subtitle">{reservations.length} dossier(s) · {search.trim() ? 'recherche' : RESERVATION_VIEWS.find((v) => v.code === view)?.label}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2" role="tablist" aria-label="Vue des réservations">
+            {RESERVATION_VIEWS.map((v) => (
+              <button key={v.code} role="tab" aria-selected={view === v.code && !search.trim()} onClick={() => { setSearch(''); setView(v.code); }}
+                className={`rounded px-3 py-1.5 text-sm ${view === v.code && !search.trim() ? 'bg-brass text-ink-900' : 'border border-ink-700 text-ink-400 hover:text-parchment'}`}>{v.label}</button>
+            ))}
+            <input aria-label="Rechercher un numéro de confirmation" placeholder="N° de confirmation…" value={search} maxLength={60} onChange={(e) => setSearch(e.target.value)} className="field w-48" />
+          </div>
           <div className="mt-3"><AutoCheckInBar onDone={load} /></div>
         </div>
         <button
