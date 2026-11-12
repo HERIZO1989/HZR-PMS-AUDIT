@@ -10,6 +10,7 @@ const ITEMS = [
   { href: '/guests', label: 'Clients' },
   { href: '/housekeeping', label: 'Housekeeping' },
   { href: '/night-audit', label: 'Night Audit' },
+  { href: '/payments', label: 'Paiements du jour' },
   { href: '/invoices', label: 'Factures & CA' },
   { href: '/receivables', label: 'Créances' },
   { href: '/report', label: 'Rapport mensuel' },
